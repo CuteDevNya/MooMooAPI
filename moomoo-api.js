@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.5.0
+ * MooMooAPI v0.6.0
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.5.0";
+    const VERSION = "0.6.0";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -415,7 +415,7 @@
         11: "Wooden Shield",
         12: "Crossbow",
         13: "Repeater Crossbow",
-        14: "MC Grabby",
+        14: "Mc Grabby",
         15: "Musket",
         16: "Apple",
         17: "Cookie",
@@ -442,7 +442,109 @@
         38: "Teleporter"
     };
 
-    const SPIKE_PRIORITY = [24, 25, 23, 22];
+    const ITEM_AGES = {
+        0: 1, 16: 1, 19: 1, 22: 1, 26: 1,
+        1: 2, 3: 2, 5: 2, 6: 2, 7: 2, 8: 2,
+        17: 3, 20: 3,
+        31: 4, 32: 4,
+        23: 5, 27: 5, 29: 5, 30: 5,
+        9: 6, 10: 6, 11: 6, 14: 6,
+        18: 7, 21: 7, 33: 7, 34: 7, 35: 7, 37: 7, 38: 7,
+        2: 8, 4: 8, 12: 8, 28: 8,
+        13: 9, 15: 9, 24: 9, 25: 9, 36: 9
+    };
+
+    // Upgrade chains are derived from the community-maintained MooMoo.io Wiki.
+    // Each nested array is one possible path; repeated IDs indicate a branching upgrade.
+    const UPGRADE_TREES = {
+        primaryWeapon: [
+            [0],
+            [1, 2],
+            [3, 4],
+            [5],
+            [6],
+            [7],
+            [8]
+        ],
+        secondaryWeapon: [
+            [9, 12, 13],
+            [9, 12, 15],
+            [10],
+            [11],
+            [14]
+        ],
+        food: [
+            [16, 17, 18]
+        ],
+        wall: [
+            [19, 20, 21]
+        ],
+        spike: [
+            [22, 23, 24],
+            [22, 23, 25]
+        ],
+        windmill: [
+            [26, 27, 28]
+        ],
+        mine: [
+            [29]
+        ],
+        sapling: [
+            [30]
+        ],
+        pitTrap: [
+            [31]
+        ],
+        boostPad: [
+            [32]
+        ],
+        turret: [
+            [33]
+        ],
+        platform: [
+            [34]
+        ],
+        healingPad: [
+            [35]
+        ],
+        spawnPad: [
+            [36]
+        ],
+        blocker: [
+            [37]
+        ],
+        teleporter: [
+            [38]
+        ]
+    };
+
+    const UPGRADE_CATEGORY_ALIASES = {
+        primary: "primaryWeapon",
+        weapon: "primaryWeapon",
+        mainweapon: "primaryWeapon",
+        primaryweapon: "primaryWeapon",
+        secondary: "secondaryWeapon",
+        secondweapon: "secondaryWeapon",
+        secondaryweapon: "secondaryWeapon",
+        food: "food",
+        consumable: "food",
+        wall: "wall",
+        walls: "wall",
+        spike: "spike",
+        spikes: "spike",
+        windmill: "windmill",
+        windmills: "windmill",
+        mine: "mine",
+        sapling: "sapling",
+        pittrap: "pitTrap",
+        boostpad: "boostPad",
+        turret: "turret",
+        platform: "platform",
+        healingpad: "healingPad",
+        spawnpad: "spawnPad",
+        blocker: "blocker",
+        teleporter: "teleporter"
+    };
 
     const ITEM_COSTS = {
         22: { wood: 20, stone: 5 },
@@ -490,6 +592,7 @@
                 type: numericId < 16 ? "weapon" : "item",
                 actionBarId: "actionBarItem" + numericId,
                 buildItemId: numericId >= 16 ? numericId - 16 : null,
+                unlockAge: ITEM_AGES[numericId],
                 available: isAvailable(numericId)
             };
         }
@@ -693,6 +796,185 @@
                 result[id] = Object.freeze(Object.assign({}, ITEM_COSTS[id]));
                 return result;
             }, {}))
+        };
+    });
+
+    // --------------------------------------------------
+    // GENERIC UPGRADE TREE HELPERS
+    // --------------------------------------------------
+
+    const upgradesModule = api.registerModule("upgrades", function (api) {
+        function resolveCategory(category) {
+            if (typeof category !== "string" || !category.trim()) {
+                throw new TypeError("[MooMooAPI] An upgrade category name is required.");
+            }
+
+            const normalized = category.toLowerCase().replace(/[\\s_-]/g, "");
+            const resolved = UPGRADE_CATEGORY_ALIASES[normalized];
+            if (!resolved || !UPGRADE_TREES[resolved]) {
+                throw new TypeError("[MooMooAPI] Unknown upgrade category: " + category);
+            }
+            return resolved;
+        }
+
+        function uniqueIds(paths) {
+            const ids = [];
+            const seen = new Set();
+            paths.forEach(function (path) {
+                path.forEach(function (id) {
+                    if (!seen.has(id)) {
+                        seen.add(id);
+                        ids.push(id);
+                    }
+                });
+            });
+            return ids;
+        }
+
+        function getTree(category) {
+            const resolved = resolveCategory(category);
+            return {
+                category: resolved,
+                paths: UPGRADE_TREES[resolved].map(function (path) {
+                    return path.map(function (id) {
+                        return api.items.get(id);
+                    });
+                })
+            };
+        }
+
+        function getAvailable(category) {
+            const resolved = resolveCategory(category);
+            return uniqueIds(UPGRADE_TREES[resolved])
+                .filter(function (id) {
+                    return api.items.isAvailable(id);
+                })
+                .map(function (id) {
+                    return api.items.get(id);
+                });
+        }
+
+        function getCurrent(category) {
+            const resolved = resolveCategory(category);
+            const paths = UPGRADE_TREES[resolved];
+            const availableItems = getAvailable(resolved);
+            const availableIds = new Set(availableItems.map(function (item) {
+                return item.id;
+            }));
+
+            // If both an earlier item and its later upgrade are visible, prefer the
+            // descendant in that same path instead of reporting the obsolete tier.
+            const candidates = availableItems.filter(function (item) {
+                return !paths.some(function (path) {
+                    const index = path.indexOf(item.id);
+                    if (index < 0) return false;
+
+                    return path.slice(index + 1).some(function (laterId) {
+                        return availableIds.has(laterId);
+                    });
+                });
+            });
+
+            if (candidates.length === 1) {
+                return Object.assign({}, candidates[0], {
+                    category: resolved,
+                    known: true,
+                    ambiguous: false,
+                    candidates: candidates
+                });
+            }
+
+            return {
+                category: resolved,
+                id: null,
+                name: null,
+                known: false,
+                ambiguous: candidates.length > 1,
+                available: availableItems,
+                candidates: candidates,
+                reason: candidates.length > 1
+                    ? "multiple-current-items-visible"
+                    : "no-current-item-visible"
+            };
+        }
+
+        function getCurrentId(category) {
+            const current = getCurrent(category);
+            return current.known ? current.id : null;
+        }
+
+        function getUpgradePath(itemId) {
+            const numericId = Number(itemId);
+            const item = api.items.get(numericId);
+            if (!item) return null;
+
+            const matches = [];
+            Object.keys(UPGRADE_TREES).forEach(function (category) {
+                UPGRADE_TREES[category].forEach(function (path) {
+                    if (path.includes(numericId)) {
+                        matches.push({
+                            category: category,
+                            path: path.map(function (id) {
+                                return api.items.get(id);
+                            })
+                        });
+                    }
+                });
+            });
+
+            return {
+                item: item,
+                paths: matches
+            };
+        }
+
+        function getAllCurrent() {
+            const result = {};
+            Object.keys(UPGRADE_TREES).forEach(function (category) {
+                result[category] = getCurrent(category);
+            });
+            return result;
+        }
+
+        function getPrimaryWeaponId() {
+            return getCurrentId("primaryWeapon");
+        }
+
+        function getSecondaryWeaponId() {
+            return getCurrentId("secondaryWeapon");
+        }
+
+        function getFoodId() {
+            return getCurrentId("food");
+        }
+
+        function getWallId() {
+            return getCurrentId("wall");
+        }
+
+        function getSpikeId() {
+            return getCurrentId("spike");
+        }
+
+        function getWindmillId() {
+            return getCurrentId("windmill");
+        }
+
+        return {
+            categories: Object.freeze(Object.keys(UPGRADE_TREES)),
+            getTree: getTree,
+            getAvailable: getAvailable,
+            getCurrent: getCurrent,
+            getCurrentId: getCurrentId,
+            getUpgradePath: getUpgradePath,
+            getAllCurrent: getAllCurrent,
+            getPrimaryWeaponId: getPrimaryWeaponId,
+            getCurrentWeaponId: getPrimaryWeaponId,
+            getSecondaryWeaponId: getSecondaryWeaponId,
+            getFoodId: getFoodId,
+            getWallId: getWallId,
+            getSpikeId: getSpikeId,
+            getWindmillId: getWindmillId
         };
     });
 
@@ -1043,214 +1325,6 @@
             place: placeItem,
             placeItemAtAngles: placeItemAtAngles,
             placeAtAngles: placeItemAtAngles
-        };
-    });
-
-    // --------------------------------------------------
-    // SPIKE HELPERS
-    // --------------------------------------------------
-
-    const spikesModule = api.registerModule("spikes", function () {
-        function getAvailable(options) {
-            const settings = Object.assign({ checkResources: true, quantity: 1 }, options || {});
-            const result = [];
-
-            for (const itemId of SPIKE_PRIORITY) {
-                if (!api.items.isAvailable(itemId)) continue;
-
-                const affordability = settings.checkResources
-                    ? api.resources.canAfford(itemId, settings.quantity)
-                    : { known: false, affordable: null, reason: "resource-check-disabled" };
-
-                result.push({
-                    id: itemId,
-                    name: ITEM_NAMES[itemId],
-                    available: true,
-                    affordability: affordability
-                });
-            }
-
-            return result;
-        }
-
-        function getBestAvailable(options) {
-            // Match the original macro: if the resource display cannot be read,
-            // continue by priority rather than preventing item selection entirely.
-            // Set unknownResources: "reject" to require a known resource state.
-            const settings = Object.assign({
-                checkResources: true,
-                unknownResources: "allow",
-                quantity: 1
-            }, options || {});
-            const candidates = getAvailable(settings);
-
-            if (!candidates.length) {
-                return {
-                    success: false,
-                    reason: "no-spike-available",
-                    candidates: []
-                };
-            }
-
-            if (!settings.checkResources) {
-                return {
-                    success: true,
-                    item: candidates[0],
-                    candidates: candidates,
-                    resourceCheck: "skipped"
-                };
-            }
-
-            const best = candidates.find(function (candidate) {
-                return candidate.affordability.affordable === true;
-            });
-
-            if (best) {
-                return {
-                    success: true,
-                    item: best,
-                    candidates: candidates,
-                    resourceCheck: "passed"
-                };
-            }
-
-            const unknown = candidates.filter(function (candidate) {
-                return candidate.affordability.affordable === null;
-            });
-
-            if (unknown.length) {
-                if (settings.unknownResources === "reject") {
-                    return {
-                        success: false,
-                        reason: "resource-state-unknown",
-                        candidates: candidates,
-                        resourceCheck: "unknown"
-                    };
-                }
-
-                return {
-                    success: true,
-                    item: unknown[0],
-                    candidates: candidates,
-                    resourceCheck: "unknown",
-                    warning: "Resource values could not be read; using spike priority without affordability verification."
-                };
-            }
-
-            return {
-                success: false,
-                reason: "not-enough-resources",
-                candidates: candidates,
-                resourceCheck: "failed"
-            };
-        }
-
-        function placeBest(options) {
-            const settings = Object.assign({
-                checkResources: true,
-                unknownResources: "allow",
-                angle: 270,
-                distance: 80,
-                restoreWeapon: true
-            }, options || {});
-
-            const chosen = getBestAvailable({
-                checkResources: settings.checkResources,
-                unknownResources: settings.unknownResources
-            });
-
-            if (!chosen.success) return chosen;
-
-            const result = api.build.placeItem(chosen.item.id, settings);
-            result.resourceCheck = chosen.resourceCheck;
-            if (chosen.warning) result.warning = chosen.warning;
-            return result;
-        }
-
-        async function placeCross(options) {
-            const settings = Object.assign({
-                checkResources: true,
-                unknownResources: "allow",
-                angles: [270, 0, 90, 180],
-                distance: 80,
-                intervalMs: 1,
-                restoreWeapon: true
-            }, options || {});
-
-            if (!Array.isArray(settings.angles) ||
-                settings.angles.length === 0 ||
-                !settings.angles.every(isFiniteNumber)) {
-                return { success: false, reason: "invalid-angles", angles: settings.angles };
-            }
-
-            const chosen = getBestAvailable({
-                checkResources: settings.checkResources,
-                unknownResources: settings.unknownResources,
-                quantity: settings.angles.length
-            });
-            if (!chosen.success) return chosen;
-
-            const result = await api.build.placeItemAtAngles(
-                chosen.item.id,
-                settings.angles,
-                settings
-            );
-            result.resourceCheck = chosen.resourceCheck;
-            if (chosen.warning) result.warning = chosen.warning;
-            result.quantity = settings.angles.length;
-            return result;
-        }
-
-        function bindHotkey(code, options, hotkeyOptions) {
-            if (typeof code !== "string" || !code) {
-                throw new TypeError("[MooMooAPI] bindHotkey requires a KeyboardEvent.code string.");
-            }
-
-            const placementOptions = Object.assign({}, options || {});
-            const keySettings = Object.assign({
-                preventDefault: true,
-                ignoreInputs: true,
-                ignoreRepeat: true
-            }, hotkeyOptions || {});
-
-            function isEditableTarget(target) {
-                if (!(target instanceof window.HTMLElement)) return false;
-                return target.isContentEditable ||
-                    ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
-            }
-
-            function onKeyDown(event) {
-                if (event.code !== code) return;
-                if (keySettings.ignoreRepeat && event.repeat) return;
-                if (keySettings.ignoreInputs && isEditableTarget(event.target)) return;
-                if (event.ctrlKey || event.altKey || event.metaKey) return;
-
-                if (keySettings.preventDefault) {
-                    event.preventDefault();
-                    event.stopPropagation();
-                }
-
-                const result = placeBest(placementOptions);
-                if (!result.success) {
-                    console.warn("[MooMooAPI] Spike placement did not complete:", result);
-                } else if (result.warning) {
-                    console.warn("[MooMooAPI] Spike placement used a fallback:", result.warning, result);
-                }
-            }
-
-            window.addEventListener("keydown", onKeyDown, true);
-            return function unbindSpikeHotkey() {
-                window.removeEventListener("keydown", onKeyDown, true);
-            };
-        }
-
-        return {
-            priority: SPIKE_PRIORITY.slice(),
-            getAvailable: getAvailable,
-            getBestAvailable: getBestAvailable,
-            placeBest: placeBest,
-            placeCross: placeCross,
-            bindHotkey: bindHotkey
         };
     });
 
