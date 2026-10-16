@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.2.2).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.2.3).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.2.2
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.2.3
 ```
 
 Then use the global `MooMooAPI`:
@@ -125,7 +125,7 @@ MooMooAPI.actions.setLastWeaponId(3);
 console.log(MooMooAPI.actions.getLastWeaponId());
 ```
 
-Selection prefers the game's `selectToBuild` function if it is accessible. If it is not available, the API tries the action-bar element's `onclick` handler with a synthetic MouseEvent, then falls back to `.click()`. Synthetic events remain untrusted; this cannot guarantee that the game will accept them.
+Selection now preserves the invocation style from the original working script: `selectToBuild(itemId, true)` for weapons and `selectToBuild(itemId - 16)` for build items, without binding a new `this` context. If that function is unavailable, the API attempts the original `onclick` compatibility fallback before trying `.click()`. The compatibility fallback cannot make a browser-generated trusted event; it only supplies a Proxy to a directly invoked handler.
 
 The API remembers a weapon when the user clicks a visible weapon in the action bar, or when a weapon is selected through `MooMooAPI.actions.selectItem`. Keyboard-based game selections may not be observable through this mechanism; set the restore ID explicitly when necessary.
 
