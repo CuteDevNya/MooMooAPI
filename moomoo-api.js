@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.2.1
+ * MooMooAPI v0.2.2
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.2.1";
+    const VERSION = "0.2.2";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
