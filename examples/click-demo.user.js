@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         MooMooAPI - Click Demo
 // @namespace    https://github.com/CuteDevNya/MooMooAPI
-// @version      0.2.2
+// @version      0.2.3
 // @description  Demo hotkey for MooMooAPI click helpers.
 // @match        https://moomoo.io/*
 // @match        https://*.moomoo.io/*
 // @run-at       document-idle
 // @grant        none
-// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.2.2
+// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.2.3
 // ==/UserScript==
 
 (function () {
