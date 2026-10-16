@@ -510,7 +510,7 @@
             if (!element) return null;
 
             const text = String(element.textContent || "").trim();
-            const match = text.match(/-?\\d[\\d,]*/);
+            const match = text.match(/-?\d[\d,]*/);
             if (!match) return null;
 
             const value = Number.parseInt(match[0].replace(/,/g, ""), 10);
@@ -650,7 +650,7 @@
                 const element = event.target.closest(".actionBarItem");
                 if (!element || !actionBar.contains(element)) return;
 
-                const match = String(element.id || "").match(/^actionBarItem(\\d+)$/);
+                const match = String(element.id || "").match(/^actionBarItem(\d+)$/);
                 if (!match) return;
 
                 const id = Number(match[1]);
