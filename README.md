@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.2.3).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.3.0).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.2.3
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.3.0
 ```
 
 Then use the global `MooMooAPI`:
@@ -31,8 +31,8 @@ The library is plain JavaScript and has no build step or third-party dependencie
 | `items` | Item catalog and visible action-bar item detection |
 | `resources` | Read food, wood, stone and gold from the current resource display; known spike costs |
 | `actions` | Select an action-bar item through the game's `selectToBuild` function when available |
-| `build` | Select a build item, click a target, and optionally restore a weapon |
-| `spikes` | Pick the best visible spike variant by priority and optionally place it with a hotkey |
+| `build` | Select a build item, click toward the mouse or at explicit angles, and optionally restore a weapon |
+| `spikes` | Pick the best visible spike variant by priority and place one spike or a four-direction cross |
 
 These modules are based on observed DOM IDs and functions from a userscript. They are not an official game API.
 
@@ -148,23 +148,27 @@ MooMooAPI.input.clickAt(640, 280, {
 });
 ```
 
-### Click by angle and distance
+### Click toward the mouse, or use an explicit angle
 
 Angles use screen coordinates: **0° = right, 90° = down, 180° = left, 270° = up**. The default origin is the center of the viewport.
 
 ```javascript
-// 80 pixels above the center (the original script's behavior):
+// Aim toward the current real mouse position and click 80px from the center:
 MooMooAPI.input.click();
 
-// 120 pixels to the right:
+// The empty configuration form behaves the same:
+MooMooAPI.input.click({});
+
+// Inspect the current direction:
+console.log(MooMooAPI.input.getMouseDirection());
+
+// Use an explicit angle instead:
 MooMooAPI.input.click({ angle: 0, distance: 120 });
-
-// 100 pixels down:
 MooMooAPI.input.clickAtAngle(90, 100);
-
-// Shorthand:
 MooMooAPI.input.click(90, 100);
 ```
+
+If the mouse is exactly at the center of the viewport, the default direction falls back to 270° (up). An explicitly supplied `angle` always takes priority over the mouse direction.
 
 You can select a different origin:
 
@@ -210,23 +214,26 @@ const unbind = MooMooAPI.input.bindClickHotkey(
 ## Build placement
 
 ```javascript
-// Select action-bar item 24, click 80px above screen center,
-// then restore the last remembered weapon if one is known.
-console.log(MooMooAPI.build.placeItem(24, {
-    angle: 270,
+// Select item 31 (Pit Trap) and click 80px in the direction of the mouse:
+console.log(MooMooAPI.build.placeItem(31, {
     distance: 80,
     restoreWeapon: true
 }));
 
-// Click at a precise viewport position instead:
+// Explicit angle overrides mouse direction:
 MooMooAPI.build.placeItem(24, {
-    x: 640,
-    y: 280,
-    restoreItemId: 3
+    angle: 270,
+    distance: 80
+});
+
+// Place one item at several angles after selecting it just once:
+MooMooAPI.build.placeItemAtAngles(22, [270, 0, 90, 180], {
+    distance: 80,
+    restoreWeapon: true
 });
 ```
 
-This is a fast sequence with no intentional delay. It is not proof that the game accepted the item placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
+No intentional delays are inserted between the click events. It is not proof that the game accepted each placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
 
 ## Spike helpers
 
@@ -242,6 +249,15 @@ console.log(MooMooAPI.spikes.placeBest({
     angle: 270,
     distance: 80,
     checkResources: true,
+    restoreWeapon: true
+}));
+
+// Place the chosen spike variant up, right, down, and left in one synchronous burst:
+console.log(MooMooAPI.spikes.placeCross({
+    angles: [270, 0, 90, 180],
+    distance: 80,
+    checkResources: true,
+    unknownResources: "allow",
     restoreWeapon: true
 }));
 ```
@@ -262,7 +278,7 @@ const unbindSpikes = MooMooAPI.spikes.bindHotkey("KeyN", {
 
 If resource values cannot be read, `placeBest` now follows the original macro's behavior and continues by spike priority, returning `resourceCheck: "unknown"` and a warning. Set `unknownResources: "reject"` to stop instead. Set `checkResources: false` to skip affordability checks entirely.
 
-See [examples/click-demo.user.js](examples/click-demo.user.js) and [examples/spike-macro.user.js](examples/spike-macro.user.js) for complete userscripts.
+See [examples/click-demo.user.js](examples/click-demo.user.js), [examples/spike-macro.user.js](examples/spike-macro.user.js), and [examples/trap-and-four-spikes.user.js](examples/trap-and-four-spikes.user.js) for complete userscripts.
 
 ## Adding new functionality
 
