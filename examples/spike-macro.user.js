@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         MooMooAPI - Spike Macro Demo
 // @namespace    https://github.com/CuteDevNya/MooMooAPI
-// @version      0.2.0
+// @version      0.2.1
 // @description  Demonstrates the MooMooAPI spike selector and placement helper.
 // @match        https://moomoo.io/*
 // @match        https://*.moomoo.io/*
@@ -30,10 +30,12 @@
             angle: 270,
             distance: 80,
             checkResources: true,
+            unknownResources: "allow",
             restoreWeapon: true
         });
 
         console.info("[MooMooAPI Spike Demo] Ready. Press N to try placing a spike.");
+        console.info("[MooMooAPI Spike Demo] If resource text cannot be parsed, the macro continues by priority and logs a warning.");
 
         window.addEventListener("beforeunload", unbind, { once: true });
     }).catch(function (error) {
