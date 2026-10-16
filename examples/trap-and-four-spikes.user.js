@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         MooMooAPI - Mouse Trap and Four Spikes
 // @namespace    https://github.com/CuteDevNya/MooMooAPI
-// @version      0.4.2
+// @version      0.5.0
 // @description  Press F to place a trap (or boost pad fallback) toward the mouse, or N to place spikes in four directions.
 // @match        https://moomoo.io/*
 // @match        https://*.moomoo.io/*
 // @run-at       document-idle
 // @grant        none
-// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.4.2
+// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.5.0
 // ==/UserScript==
 
 (function () {
