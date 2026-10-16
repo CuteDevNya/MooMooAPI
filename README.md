@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.4.2).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.5.0).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.4.2
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.5.0
 ```
 
 Then use the global `MooMooAPI`:
@@ -29,7 +29,7 @@ The library is plain JavaScript and has no build step or third-party dependencie
 | --- | --- |
 | `input` | Synthetic click helpers, coordinates, angles, optional click hotkeys |
 | `items` | Item catalog and visible action-bar item detection |
-| `resources` | Read food, wood, stone and gold from the current resource display; known spike costs |
+| `resources` | Read food, wood, stone and score from dedicated display elements, with a legacy fallback for gold; known spike costs |
 | `actions` | Select an action-bar item through the game's `selectToBuild` function when available |
 | `build` | Select a build item, click toward the mouse or at explicit angles, and optionally restore a weapon |
 | `spikes` | Pick the best visible spike variant by priority and place one spike or a four-direction cross |
@@ -88,19 +88,20 @@ The current catalog contains:
 
 ## Resources
 
-Resource counts are read from the children of `#resDisplay`, in this observed order: food, wood, stone, gold.
+Food, wood, and stone are read from the `innerHTML` of `#foodDisplay`, `#woodDisplay`, and `#stoneDisplay`. The API falls back to the matching child of `#resDisplay` if one of those dedicated elements is unavailable or unparsable. Score is read from `#scoreDisplay` and exposed separately; legacy gold is still read from the fourth child of `#resDisplay` when present.
 
 ```javascript
 const resources = MooMooAPI.resources.get();
 console.log(resources);
-// { food: ..., wood: ..., stone: ..., gold: ..., known: true }
+// { food: ..., wood: ..., stone: ..., score: ..., gold: ..., known: true }
 
 console.log(MooMooAPI.resources.getAmount("wood"));
+console.log(MooMooAPI.resources.getScore()); // Same as getAmount("score")
 console.log(MooMooAPI.resources.canAfford(24)); // Poison Spikes, one placement
 console.log(MooMooAPI.resources.canAfford(24, 4)); // Resources for four Poison Spikes
 ```
 
-If the element is missing or a number cannot be parsed, the API returns `null` for unknown values instead of assuming the player can afford an item. Only the following spike costs have been added from the supplied userscript; costs for other items are not yet known here:
+If a value is missing or cannot be parsed, the API returns `null` for that value instead of assuming the player can afford an item. The `known` flag requires food, wood, and stone; score is independent of that flag. Only the following spike costs have been added from the supplied userscript; costs for other items are not yet known here:
 
 | Item ID | Spike variant | Wood | Stone |
 | ---: | --- | ---: | ---: |
