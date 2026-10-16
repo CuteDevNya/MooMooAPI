@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.4.1
+ * MooMooAPI v0.4.2
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.4.1";
+    const VERSION = "0.4.2";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -946,7 +946,7 @@
             const numericId = Number(itemId);
             const settings = Object.assign({
                 distance: 80,
-                intervalMs: 0,
+                intervalMs: 1,
                 restoreWeapon: true
             }, options || {});
 
@@ -1148,7 +1148,7 @@
                 unknownResources: "allow",
                 angles: [270, 0, 90, 180],
                 distance: 80,
-                intervalMs: 0,
+                intervalMs: 1,
                 restoreWeapon: true
             }, options || {});
 
