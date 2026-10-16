@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.4.2
+ * MooMooAPI v0.5.0
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.4.2";
+    const VERSION = "0.5.0";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -542,10 +542,14 @@
     // --------------------------------------------------
 
     const resourcesModule = api.registerModule("resources", function () {
-        function parseAmount(element) {
-            if (!element) return null;
+        function parseAmount(rawValue) {
+            if (rawValue === null || rawValue === undefined) return null;
 
-            const text = String(element.textContent || "").trim();
+            // The game displays these values through innerHTML; strip markup before parsing.
+            const text = String(rawValue)
+                .replace(/<[^>]*>/g, " ")
+                .replace(/&nbsp;|&#160;|&#xA0;/gi, " ")
+                .trim();
             const match = text.match(/-?\d[\d,]*/);
             if (!match) return null;
 
@@ -553,33 +557,49 @@
             return Number.isFinite(value) ? value : null;
         }
 
+        function getDisplayAmount(id) {
+            const element = document.getElementById(id);
+            return element ? parseAmount(element.innerHTML) : null;
+        }
+
+        function getLegacyAmount(children, index) {
+            if (!children || children.length <= index || !children[index]) return null;
+            return parseAmount(children[index].innerHTML);
+        }
+
         function get() {
             const display = document.getElementById("resDisplay");
             const children = display ? display.children : null;
 
-            if (!children || children.length < 3) {
-                return {
-                    known: false,
-                    food: null,
-                    wood: null,
-                    stone: null,
-                    gold: null,
-                    reason: "resource-display-not-found-or-incomplete"
-                };
-            }
+            const directFood = getDisplayAmount("foodDisplay");
+            const directWood = getDisplayAmount("woodDisplay");
+            const directStone = getDisplayAmount("stoneDisplay");
 
             const result = {
-                food: parseAmount(children[0]),
-                wood: parseAmount(children[1]),
-                stone: parseAmount(children[2]),
-                gold: children.length >= 4 ? parseAmount(children[3]) : null
+                food: directFood !== null ? directFood : getLegacyAmount(children, 0),
+                wood: directWood !== null ? directWood : getLegacyAmount(children, 1),
+                stone: directStone !== null ? directStone : getLegacyAmount(children, 2),
+                score: getDisplayAmount("scoreDisplay"),
+                // Gold is retained for older clients that expose it as the fourth resDisplay child.
+                gold: getLegacyAmount(children, 3)
             };
 
             result.known = result.food !== null &&
                 result.wood !== null &&
                 result.stone !== null;
 
-            if (!result.known) result.reason = "resource-values-could-not-be-parsed";
+            if (!result.known) {
+                const hasDisplay = Boolean(
+                    display ||
+                    document.getElementById("foodDisplay") ||
+                    document.getElementById("woodDisplay") ||
+                    document.getElementById("stoneDisplay")
+                );
+                result.reason = hasDisplay
+                    ? "resource-values-could-not-be-parsed"
+                    : "resource-display-not-found-or-incomplete";
+            }
+
             return result;
         }
 
@@ -587,10 +607,14 @@
             const state = get();
             const name = String(resourceName).toLowerCase();
 
-            if (!["food", "wood", "stone", "gold"].includes(name)) {
-                throw new TypeError("[MooMooAPI] Unknown resource: " + resourceName);
+            if (!["food", "wood", "stone", "score", "gold"].includes(name)) {
+                throw new TypeError("[MooMooAPI] Unknown resource or counter: " + resourceName);
             }
             return state[name];
+        }
+
+        function getScore() {
+            return getDisplayAmount("scoreDisplay");
         }
 
         function getCost(itemId) {
@@ -662,6 +686,7 @@
         return {
             get: get,
             getAmount: getAmount,
+            getScore: getScore,
             getCost: getCost,
             canAfford: canAfford,
             costs: Object.freeze(Object.keys(ITEM_COSTS).reduce(function (result, id) {
