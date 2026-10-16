@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.2.2
+ * MooMooAPI v0.2.3
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.2.2";
+    const VERSION = "0.2.3";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -686,10 +686,10 @@
             if (selectFunction) {
                 try {
                     if (numericId < 16) {
-                        selectFunction.call(window, numericId, true);
+                        selectFunction(numericId, true);
                         lastManuallySelectedWeaponId = numericId;
                     } else {
-                        selectFunction.call(window, numericId - 16);
+                        selectFunction(numericId - 16);
                     }
 
                     return {
@@ -705,17 +705,26 @@
 
             if (settings.fallbackToDomClick && typeof element.onclick === "function") {
                 try {
-                    // Some client versions attach selection logic directly to onclick.
-                    // Call that handler directly as a compatibility fallback. This is
-                    // still a synthetic event and must not be treated as server proof.
-                    const handlerEvent = new window.MouseEvent("click", {
+                    // Compatibility fallback preserved from the original working script.
+                    // Some handlers inspect isTrusted even when called directly.
+                    const baseEvent = new window.MouseEvent("click", {
                         bubbles: true,
                         cancelable: true,
                         view: window,
                         button: 0
                     });
 
-                    // Keep the event synthetic; never pretend browser-generated trust.
+                    const handlerEvent = new Proxy(baseEvent, {
+                        get(target, property) {
+                            if (property === "isTrusted") return true;
+
+                            const value = Reflect.get(target, property, target);
+                            return typeof value === "function"
+                                ? value.bind(target)
+                                : value;
+                        }
+                    });
+
                     element.onclick.call(element, handlerEvent);
                     if (numericId < 16) lastManuallySelectedWeaponId = numericId;
 
@@ -723,10 +732,10 @@
                         success: true,
                         itemId: numericId,
                         name: ITEM_NAMES[numericId],
-                        method: "onclick-handler"
+                        method: "onclick-handler-compat"
                     };
                 } catch (error) {
-                    console.warn("[MooMooAPI] onclick fallback failed; trying DOM click.", error);
+                    console.warn("[MooMooAPI] onclick compatibility fallback failed; trying DOM click.", error);
                 }
             }
 
