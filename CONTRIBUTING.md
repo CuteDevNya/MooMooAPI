@@ -1,6 +1,6 @@
 # Contributing to MooMooAPI
 
-Thanks for helping improve MooMooAPI. The project is currently an early client-side foundation, so reliability and clear documentation matter more than the number of methods.
+Thanks for helping improve MooMooAPI. This project is an early client-side foundation, so reliability, inspectable behavior, and clear documentation matter more than the number of methods.
 
 ## Project conventions
 
@@ -11,6 +11,18 @@ Thanks for helping improve MooMooAPI. The project is currently an early client-s
 - Validate public arguments and return useful errors or structured failure results.
 - Clearly distinguish verified behavior from hypotheses or planned functionality.
 - Do not document game internals as stable until they have been tested against the current official client.
+- Never fake `event.isTrusted`; prefer direct client methods or ordinary DOM APIs and document their limitations.
+
+## Current built-in modules
+
+- `input`: synthetic pointer events and optional click shortcuts.
+- `items`: action-bar catalog and DOM visibility checks.
+- `resources`: resource count parsing and the currently known spike costs.
+- `actions`: game item selection, preferring `selectToBuild` when available.
+- `build`: item selection followed by a click and optional weapon restoration.
+- `spikes`: priority-based spike selection and an optional hotkey binding.
+
+DOM visibility is a client-side signal, not an independent proof of server-side ownership or unlock state.
 
 ## Adding a module
 
@@ -34,11 +46,13 @@ When adding a built-in module:
 2. Use unique module and public method names.
 3. Update the README with signatures, arguments, examples, return values, and limitations.
 4. Add or update an example userscript when it makes the feature easier to understand.
-5. Verify the feature in the browser against the current game version before describing it as supported.
+5. Verify the feature in a browser against the current game version before describing it as live-tested.
 
-## Click module notes
+## Click and action notes
 
-The first input helpers dispatch synthetic DOM mouse events to a configurable target. A successful dispatch only means the DOM accepted the dispatch; it does not guarantee the game acted on it. Keep this distinction clear in logs and documentation.
+The input helpers dispatch synthetic DOM mouse events to a configurable target. A successful dispatch only means the DOM accepted the dispatch; it does not guarantee that the game acted on it or that the server accepted the action.
+
+The `selectToBuild` function and action-bar DOM IDs are observed client implementation details. They may change during a game update. Keep fallbacks explicit, report failure reasons, and do not describe client-side action calls as guaranteed results.
 
 ## Versioning
 
@@ -46,4 +60,4 @@ The first input helpers dispatch synthetic DOM mouse events to a configurable ta
 - Minor version: backward-compatible features.
 - Major version: breaking API changes.
 
-Until automated tests are added, review syntax and test changed methods in a browser before publishing.
+Before publishing, check JavaScript syntax, test the method logic, and verify behavior in a real browser when possible. A mocked test is useful but is not a substitute for a live game test.
