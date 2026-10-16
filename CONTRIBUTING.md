@@ -11,7 +11,7 @@ Thanks for helping improve MooMooAPI. This project is an early client-side found
 - Validate public arguments and return useful errors or structured failure results.
 - Clearly distinguish verified behavior from hypotheses or planned functionality.
 - Do not document game internals as stable until they have been tested against the current official client.
-- Never fake `event.isTrusted`; prefer direct client methods or ordinary DOM APIs and document their limitations.
+- Prefer direct client methods. If maintaining a compatibility shim for a known handler, document that it only affects the handler's property read and does not create a browser-trusted event.
 
 ## Current built-in modules
 
