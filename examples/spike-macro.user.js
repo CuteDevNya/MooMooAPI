@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         MooMooAPI - Spike Macro Demo
 // @namespace    https://github.com/CuteDevNya/MooMooAPI
-// @version      0.2.3
+// @version      0.3.0
 // @description  Demonstrates the MooMooAPI spike selector and placement helper.
 // @match        https://moomoo.io/*
 // @match        https://*.moomoo.io/*
 // @run-at       document-idle
 // @grant        none
-// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.2.3
+// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.3.0
 // ==/UserScript==
 
 (function () {
