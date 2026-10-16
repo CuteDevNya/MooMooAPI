@@ -281,6 +281,8 @@ const unbindSpikes = MooMooAPI.spikes.bindHotkey("KeyN", {
 
 If resource values cannot be read, spike placement follows the original macro's behavior and continues by spike priority, returning `resourceCheck: "unknown"` and a warning. Set `unknownResources: "reject"` to stop instead. Set `checkResources: false` to skip affordability checks entirely. `placeCross` checks the total known resource cost for all requested placements, not just one spike.
 
+The [trap-and-four-spikes example](examples/trap-and-four-spikes.user.js) binds **F** to place a Pit Trap toward the mouse, falling back to a Boost Pad if the trap item is unavailable. It binds **N** to place the best affordable spike variant up, right, down, and left. Multi-angle placement is asynchronous and uses a short 35ms default interval between clicks; adjust `intervalMs` if the game client needs more time to process individual placements.
+
 See [examples/click-demo.user.js](examples/click-demo.user.js), [examples/spike-macro.user.js](examples/spike-macro.user.js), and [examples/trap-and-four-spikes.user.js](examples/trap-and-four-spikes.user.js) for complete userscripts.
 
 ## Adding new functionality
