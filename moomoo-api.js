@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.6.0
+ * MooMooAPI v0.7.0
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.6.0";
+    const VERSION = "0.7.0";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -99,6 +99,25 @@
 
     function isFiniteNumber(value) {
         return typeof value === "number" && Number.isFinite(value);
+    }
+
+    function numberOrNull(value) {
+        if (typeof value === "number" && Number.isFinite(value)) return value;
+        if (typeof value === "string" && value.trim() !== "") {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric : null;
+        }
+        return null;
+    }
+
+    // Optional integration with a compatible MooMoo.js runtime.
+    function getMooMooClient() {
+        try {
+            const candidate = window.MooMoo;
+            return candidate && typeof candidate === "object" ? candidate : null;
+        } catch (_) {
+            return null;
+        }
     }
 
     function getButtonNumber(button) {
@@ -380,6 +399,90 @@
             };
         }
 
+        /**
+         * Repeat a callback while a key remains held. Async callbacks are awaited
+         * so slow work does not overlap. Keyup and window blur always stop the loop.
+         */
+        function bindRepeatHotkey(code, callback, options) {
+            if (typeof code !== "string" || !code) {
+                throw new TypeError("[MooMooAPI] bindRepeatHotkey requires a KeyboardEvent.code string.");
+            }
+            if (typeof callback !== "function") {
+                throw new TypeError("[MooMooAPI] bindRepeatHotkey requires a callback function.");
+            }
+
+            const settings = Object.assign({
+                intervalMs: 111,
+                minIntervalMs: 40,
+                immediate: true,
+                preventDefault: true,
+                stopPropagation: false,
+                ignoreInputs: true,
+                ignoreModifiers: true
+            }, options || {});
+
+            if (!Number.isFinite(settings.intervalMs) || settings.intervalMs < 0 ||
+                !Number.isFinite(settings.minIntervalMs) || settings.minIntervalMs < 0) {
+                throw new TypeError("[MooMooAPI] Repeat intervals must be non-negative finite numbers.");
+            }
+            const intervalMs = Math.max(settings.intervalMs, settings.minIntervalMs);
+            let held = false;
+            let running = false;
+            let timerId = null;
+            let lastEvent = null;
+
+            function stop() {
+                held = false;
+                if (timerId !== null) {
+                    window.clearTimeout(timerId);
+                    timerId = null;
+                }
+            }
+
+            async function runOnce() {
+                if (!held || running) return;
+                running = true;
+                try {
+                    const result = await callback(lastEvent);
+                    if (result === false) {
+                        stop();
+                        return;
+                    }
+                } catch (error) {
+                    console.error("[MooMooAPI] Repeat-hotkey callback failed:", error);
+                } finally {
+                    running = false;
+                    if (held) timerId = window.setTimeout(runOnce, intervalMs);
+                }
+            }
+
+            function onKeyDown(event) {
+                if (event.code !== code || held || event.repeat) return;
+                if (settings.ignoreModifiers && (event.ctrlKey || event.altKey || event.metaKey)) return;
+                if (settings.ignoreInputs && isEditableTarget(event.target)) return;
+                held = true;
+                lastEvent = event;
+                if (settings.preventDefault) event.preventDefault();
+                if (settings.stopPropagation) event.stopPropagation();
+                if (settings.immediate) runOnce();
+                else timerId = window.setTimeout(runOnce, intervalMs);
+            }
+
+            function onKeyUp(event) {
+                if (event.code === code) stop();
+            }
+
+            window.addEventListener("keydown", onKeyDown, true);
+            window.addEventListener("keyup", onKeyUp, true);
+            window.addEventListener("blur", stop);
+            return function unbindRepeatHotkey() {
+                stop();
+                window.removeEventListener("keydown", onKeyDown, true);
+                window.removeEventListener("keyup", onKeyUp, true);
+                window.removeEventListener("blur", stop);
+            };
+        }
+
         return {
             clickAt: clickAt,
             clickAtScreenPoint: clickAt,
@@ -391,7 +494,8 @@
             setDefaultTarget: setDefaultTarget,
             getMousePosition: getMousePosition,
             getMouseDirection: getMouseDirection,
-            bindClickHotkey: bindClickHotkey
+            bindClickHotkey: bindClickHotkey,
+            bindRepeatHotkey: bindRepeatHotkey
         };
     });
 
@@ -641,8 +745,297 @@
     });
 
     // --------------------------------------------------
+    // OPTIONAL MOOMOO.JS BRIDGE
+    // --------------------------------------------------
+
+    const bridgeModule = api.registerModule("bridge", function () {
+        function getClient() {
+            return getMooMooClient();
+        }
+
+        function isAvailable() {
+            const client = getClient();
+            return Boolean(client && client.self && client.send &&
+                typeof client.send.selectItem === "function");
+        }
+
+        function getSelf() {
+            const client = getClient();
+            if (!client || !client.self || typeof client.self !== "object") return null;
+            const state = Object.assign({}, client.self);
+            if (Array.isArray(client.self.weapons)) state.weapons = client.self.weapons.slice();
+            if (Array.isArray(client.self.items)) state.items = client.self.items.slice();
+            return state;
+        }
+
+        function getCapabilities() {
+            const client = getClient();
+            const send = client && client.send;
+            return {
+                available: isAvailable(),
+                state: Boolean(client && client.self && typeof client.self === "object"),
+                events: Boolean(client && typeof client.on === "function"),
+                readyEvent: Boolean(client && typeof client.onReady === "function"),
+                selectItem: Boolean(send && typeof send.selectItem === "function"),
+                mouse: Boolean(send && typeof send.mouse === "function"),
+                aim: Boolean(send && typeof send.aim === "function"),
+                store: Boolean(send && typeof send.store === "function")
+            };
+        }
+
+        function sendAction(actionName, args) {
+            const client = getClient();
+            const send = client && client.send;
+            if (!send || typeof send[actionName] !== "function") {
+                return { success: false, reason: "bridge-action-unavailable", action: actionName };
+            }
+            try {
+                const result = send[actionName].apply(send, args);
+                return {
+                    success: result !== false,
+                    reason: result === false ? "action-rejected" : null,
+                    action: actionName,
+                    result: result
+                };
+            } catch (error) {
+                return { success: false, reason: "bridge-action-threw", action: actionName, error: error };
+            }
+        }
+
+        function selectGameItem(itemId, isWeapon) {
+            if (!Number.isInteger(itemId) || itemId < 0) {
+                return { success: false, reason: "invalid-game-item-id", itemId: itemId };
+            }
+            return Object.assign(
+                { gameItemId: itemId, isWeapon: Boolean(isWeapon) },
+                sendAction("selectItem", [itemId, Boolean(isWeapon)])
+            );
+        }
+
+        function selectActionBarItem(actionBarId) {
+            const numericId = Number(actionBarId);
+            if (!Number.isInteger(numericId) || !isValidItemId(numericId)) {
+                return { success: false, reason: "invalid-item-id", itemId: actionBarId };
+            }
+            const gameItemId = numericId < 16 ? numericId : numericId - 16;
+            const result = selectGameItem(gameItemId, numericId < 16);
+            result.itemId = numericId;
+            result.actionBarId = "actionBarItem" + numericId;
+            result.method = "moomoo-bridge";
+            return result;
+        }
+
+        function mouse(down, directionRadians) {
+            if (typeof down !== "boolean") return { success: false, reason: "invalid-mouse-state" };
+            if (directionRadians !== undefined && !isFiniteNumber(directionRadians)) {
+                return { success: false, reason: "invalid-direction-radians" };
+            }
+            const args = directionRadians === undefined ? [down] : [down, directionRadians];
+            return Object.assign({ down: down, directionRadians: directionRadians }, sendAction("mouse", args));
+        }
+
+        function aim(directionRadians) {
+            if (!isFiniteNumber(directionRadians)) return { success: false, reason: "invalid-direction-radians" };
+            return Object.assign({ directionRadians: directionRadians }, sendAction("aim", [directionRadians]));
+        }
+
+        function storeAction(id, isAccessory, action, label) {
+            const numericId = Number(id);
+            if (!Number.isInteger(numericId) || numericId < 0) {
+                return { success: false, reason: "invalid-store-item-id", id: id };
+            }
+            return Object.assign(
+                { id: numericId, accessory: Boolean(isAccessory) },
+                sendAction("store", [action, numericId, Boolean(isAccessory)])
+            );
+        }
+
+        function on(eventName, callback) {
+            const client = getClient();
+            if (!client || typeof client.on !== "function" || typeof callback !== "function") return null;
+            try {
+                const unsubscribe = client.on(eventName, callback);
+                return typeof unsubscribe === "function" ? unsubscribe : function () {};
+            } catch (error) {
+                console.warn("[MooMooAPI] Could not subscribe to bridge event '" + eventName + "':", error);
+                return null;
+            }
+        }
+
+        function onReady(callback) {
+            const client = getClient();
+            if (!client || typeof client.onReady !== "function" || typeof callback !== "function") return null;
+            try {
+                const unsubscribe = client.onReady(callback);
+                return typeof unsubscribe === "function" ? unsubscribe : function () {};
+            } catch (error) {
+                console.warn("[MooMooAPI] Could not subscribe to bridge readiness:", error);
+                return null;
+            }
+        }
+
+        return {
+            isAvailable: isAvailable,
+            getCapabilities: getCapabilities,
+            getSelf: getSelf,
+            on: on,
+            onReady: onReady,
+            selectGameItem: selectGameItem,
+            selectActionBarItem: selectActionBarItem,
+            mouse: mouse,
+            aim: aim,
+            setHat: function (id) { return storeAction(id, false, 1, "hat"); },
+            setAccessory: function (id) { return storeAction(id, true, 1, "accessory"); },
+            buyHat: function (id) { return storeAction(id, false, 0, "hat"); },
+            buyAccessory: function (id) { return storeAction(id, true, 0, "accessory"); }
+        };
+    });
+
+    // --------------------------------------------------
+    // PLAYER STATE
+    // --------------------------------------------------
+
+    const playerModule = api.registerModule("player", function () {
+        const MAX_HEALTH = 100;
+
+        function get() {
+            const state = api.bridge.getSelf();
+            if (!state) {
+                return {
+                    available: false, known: false, sid: null, alive: null,
+                    health: null, maxHealth: MAX_HEALTH, healthPercent: null,
+                    x: null, y: null, position: null, directionRadians: null,
+                    weaponId: null, buildIndex: null, buildItemId: null,
+                    actionBarItemId: null, hatId: null, accessoryId: null,
+                    ownedWeaponIds: [], ownedItemIds: [], resources: {
+                        food: null, wood: null, stone: null, gold: null
+                    }
+                };
+            }
+
+            const sid = numberOrNull(state.sid);
+            const health = numberOrNull(state.health);
+            const weaponId = numberOrNull(state.weaponIndex);
+            const buildIndex = numberOrNull(state.buildIndex);
+            const x = numberOrNull(state.x);
+            const y = numberOrNull(state.y);
+            const activeBuildItem = buildIndex !== null && buildIndex >= 0 ? buildIndex : null;
+
+            return {
+                available: true,
+                known: sid !== null && sid >= 0,
+                sid: sid,
+                alive: typeof state.alive === "boolean" ? state.alive : null,
+                health: health,
+                maxHealth: MAX_HEALTH,
+                healthPercent: health === null ? null : Math.max(0, Math.min(100, health / MAX_HEALTH * 100)),
+                x: x,
+                y: y,
+                position: x === null || y === null ? null : { x: x, y: y },
+                directionRadians: numberOrNull(state.dir),
+                weaponId: weaponId,
+                buildIndex: buildIndex,
+                buildItemId: activeBuildItem,
+                actionBarItemId: activeBuildItem !== null ? activeBuildItem + 16 : weaponId,
+                hatId: numberOrNull(state.hat),
+                accessoryId: numberOrNull(state.accessory),
+                team: state.team === undefined ? null : state.team,
+                points: numberOrNull(state.points),
+                kills: numberOrNull(state.kills),
+                ownedWeaponIds: Array.isArray(state.weapons) ? state.weapons.slice() : [],
+                ownedItemIds: Array.isArray(state.items) ? state.items.slice() : [],
+                resources: {
+                    food: numberOrNull(state.food),
+                    wood: numberOrNull(state.wood),
+                    stone: numberOrNull(state.stone),
+                    gold: numberOrNull(state.gold)
+                }
+            };
+        }
+
+        function getHealth() { return get().health; }
+        function getHealthPercent() { return get().healthPercent; }
+        function isAlive() { return get().alive; }
+        function getWeaponId() { return get().weaponId; }
+        function getBuildItemId() { return get().buildItemId; }
+        function getActionBarItemId() { return get().actionBarItemId; }
+
+        function onHealthChange(callback) {
+            if (typeof callback !== "function") {
+                throw new TypeError("[MooMooAPI] onHealthChange requires a callback function.");
+            }
+            let previousHealth = getHealth();
+            return api.bridge.on("health", function (payload) {
+                const state = get();
+                if (!state.known || !payload || payload.sid !== state.sid) return;
+                const nextHealth = numberOrNull(payload.value);
+                callback({
+                    sid: state.sid,
+                    previousHealth: previousHealth,
+                    health: nextHealth,
+                    delta: previousHealth === null || nextHealth === null ? null : nextHealth - previousHealth,
+                    player: state,
+                    raw: payload
+                });
+                previousHealth = nextHealth;
+            });
+        }
+
+        function onDeath(callback) {
+            if (typeof callback !== "function") throw new TypeError("[MooMooAPI] onDeath requires a callback function.");
+            return api.bridge.on("died", function (payload) { callback({ player: get(), raw: payload }); });
+        }
+
+        function onSpawn(callback) {
+            if (typeof callback !== "function") throw new TypeError("[MooMooAPI] onSpawn requires a callback function.");
+            return api.bridge.on("playerAdd", function (payload) {
+                if (payload && payload.isYou) callback({ player: get(), raw: payload });
+            });
+        }
+
+        function onInventoryChange(callback) {
+            if (typeof callback !== "function") throw new TypeError("[MooMooAPI] onInventoryChange requires a callback function.");
+            return api.bridge.on("inventory", function (payload) {
+                callback({ player: get(), isWeapon: Boolean(payload && payload.isWeapon), raw: payload });
+            });
+        }
+
+        function onValueChange(callback) {
+            if (typeof callback !== "function") throw new TypeError("[MooMooAPI] onValueChange requires a callback function.");
+            return api.bridge.on("playerValue", function (payload) {
+                callback({
+                    key: payload && payload.key,
+                    value: payload && payload.value,
+                    player: get(),
+                    raw: payload
+                });
+            });
+        }
+
+        return {
+            maxHealth: MAX_HEALTH,
+            get: get,
+            getSelf: get,
+            getHealth: getHealth,
+            getHealthPercent: getHealthPercent,
+            isAlive: isAlive,
+            getWeaponId: getWeaponId,
+            getCurrentWeaponId: getWeaponId,
+            getBuildItemId: getBuildItemId,
+            getCurrentBuildItemId: getBuildItemId,
+            getActionBarItemId: getActionBarItemId,
+            onHealthChange: onHealthChange,
+            onDeath: onDeath,
+            onSpawn: onSpawn,
+            onInventoryChange: onInventoryChange,
+            onValueChange: onValueChange
+        };
+    });
+
+    // --------------------------------------------------
     // RESOURCE COUNTS AND KNOWN ITEM COSTS
     // --------------------------------------------------
+
 
     const resourcesModule = api.registerModule("resources", function () {
         function parseAmount(rawValue) {
@@ -673,36 +1066,57 @@
         function get() {
             const display = document.getElementById("resDisplay");
             const children = display ? display.children : null;
+            const gameState = api.bridge.getSelf() || {};
 
-            const directFood = getDisplayAmount("foodDisplay");
-            const directWood = getDisplayAmount("woodDisplay");
-            const directStone = getDisplayAmount("stoneDisplay");
-
-            const result = {
-                food: directFood !== null ? directFood : getLegacyAmount(children, 0),
-                wood: directWood !== null ? directWood : getLegacyAmount(children, 1),
-                stone: directStone !== null ? directStone : getLegacyAmount(children, 2),
+            const dom = {
+                food: getDisplayAmount("foodDisplay"),
+                wood: getDisplayAmount("woodDisplay"),
+                stone: getDisplayAmount("stoneDisplay"),
                 score: getDisplayAmount("scoreDisplay"),
-                // Gold is retained for older clients that expose it as the fourth resDisplay child.
                 gold: getLegacyAmount(children, 3)
             };
 
-            result.known = result.food !== null &&
-                result.wood !== null &&
-                result.stone !== null;
+            if (dom.food === null) dom.food = getLegacyAmount(children, 0);
+            if (dom.wood === null) dom.wood = getLegacyAmount(children, 1);
+            if (dom.stone === null) dom.stone = getLegacyAmount(children, 2);
+
+            const native = {
+                food: numberOrNull(gameState.food),
+                wood: numberOrNull(gameState.wood),
+                stone: numberOrNull(gameState.stone),
+                score: numberOrNull(gameState.points !== undefined ? gameState.points : gameState.score),
+                gold: numberOrNull(gameState.gold)
+            };
+            const result = {};
+            const sources = {};
+            Object.keys(dom).forEach(function (key) {
+                if (native[key] !== null) {
+                    result[key] = native[key];
+                    sources[key] = "moomoo-state";
+                } else if (dom[key] !== null) {
+                    result[key] = dom[key];
+                    sources[key] = "dom";
+                } else {
+                    result[key] = null;
+                    sources[key] = "unknown";
+                }
+            });
+
+            result.known = result.food !== null && result.wood !== null && result.stone !== null;
+            result.sources = sources;
 
             if (!result.known) {
                 const hasDisplay = Boolean(
                     display ||
                     document.getElementById("foodDisplay") ||
                     document.getElementById("woodDisplay") ||
-                    document.getElementById("stoneDisplay")
+                    document.getElementById("stoneDisplay") ||
+                    api.bridge.isAvailable()
                 );
                 result.reason = hasDisplay
-                    ? "resource-values-could-not-be-parsed"
-                    : "resource-display-not-found-or-incomplete";
+                    ? "resource-values-could-not-be-parsed-or-state-is-unavailable"
+                    : "resource-display-not-found-or-bridge-unavailable";
             }
-
             return result;
         }
 
@@ -717,7 +1131,23 @@
         }
 
         function getScore() {
-            return getDisplayAmount("scoreDisplay");
+            return get().score;
+        }
+
+        function onChange(callback) {
+            if (typeof callback !== "function") {
+                throw new TypeError("[MooMooAPI] resources.onChange requires a callback function.");
+            }
+            return api.bridge.on("playerValue", function (payload) {
+                const key = payload && String(payload.key || "").toLowerCase();
+                if (!["food", "wood", "stone", "gold", "points", "score"].includes(key)) return;
+                callback({
+                    name: key === "points" ? "score" : key,
+                    value: numberOrNull(payload.value),
+                    resources: get(),
+                    raw: payload
+                });
+            });
         }
 
         function getCost(itemId) {
@@ -790,6 +1220,7 @@
             get: get,
             getAmount: getAmount,
             getScore: getScore,
+            onChange: onChange,
             getCost: getCost,
             canAfford: canAfford,
             costs: Object.freeze(Object.keys(ITEM_COSTS).reduce(function (result, id) {
@@ -1037,6 +1468,11 @@
                 };
             }
 
+            const method = settings.method || "auto";
+            if (!["auto", "selectToBuild", "bridge", "dom"].includes(method)) {
+                return { success: false, reason: "invalid-selection-method", itemId: numericId, method: method };
+            }
+
             const element = api.items.getElement(numericId);
             if (!element || !api.items.isAvailable(numericId)) {
                 return {
@@ -1047,24 +1483,46 @@
                 };
             }
 
-            const selectFunction = getSelectToBuild();
-            if (selectFunction) {
-                try {
-                    if (numericId < 16) {
-                        selectFunction(numericId, true);
-                        lastManuallySelectedWeaponId = numericId;
-                    } else {
-                        selectFunction(numericId - 16);
-                    }
+            if (method === "bridge") {
+                const result = api.bridge.selectActionBarItem(numericId);
+                if (result.success && numericId < 16) lastManuallySelectedWeaponId = numericId;
+                return result;
+            }
 
+            if (method !== "dom") {
+                const selectFunction = getSelectToBuild();
+                if (selectFunction) {
+                    try {
+                        if (numericId < 16) {
+                            selectFunction(numericId, true);
+                            lastManuallySelectedWeaponId = numericId;
+                        } else {
+                            selectFunction(numericId - 16);
+                        }
+                        return {
+                            success: true,
+                            itemId: numericId,
+                            name: ITEM_NAMES[numericId],
+                            method: "selectToBuild"
+                        };
+                    } catch (error) {
+                        console.warn("[MooMooAPI] selectToBuild failed; considering bridge/DOM fallback.", error);
+                    }
+                } else if (method === "selectToBuild") {
                     return {
-                        success: true,
+                        success: false,
+                        reason: "selection-function-unavailable",
                         itemId: numericId,
-                        name: ITEM_NAMES[numericId],
-                        method: "selectToBuild"
+                        name: ITEM_NAMES[numericId]
                     };
-                } catch (error) {
-                    console.warn("[MooMooAPI] selectToBuild failed; considering DOM fallback.", error);
+                }
+            }
+
+            if (method === "auto" && api.bridge.isAvailable()) {
+                const result = api.bridge.selectActionBarItem(numericId);
+                if (result.success) {
+                    if (numericId < 16) lastManuallySelectedWeaponId = numericId;
+                    return result;
                 }
             }
 
@@ -1133,6 +1591,91 @@
             };
         }
 
+        function wait(milliseconds) {
+            return new Promise(function (resolve) { window.setTimeout(resolve, milliseconds); });
+        }
+
+        function getDirectionRadians(settings) {
+            if (isFiniteNumber(settings.directionRadians)) return settings.directionRadians;
+            const angle = isFiniteNumber(settings.angle)
+                ? settings.angle
+                : api.input.getMouseDirection(settings.origin).angle;
+            return angle * Math.PI / 180;
+        }
+
+        async function useItem(itemId, options) {
+            const numericId = Number(itemId);
+            const settings = Object.assign({
+                method: "auto",
+                distance: 80,
+                delayMs: 0,
+                restoreWeapon: true
+            }, options || {});
+
+            if (!isValidItemId(numericId) || numericId < 16) {
+                return { success: false, reason: "not-a-consumable-or-build-item", itemId: numericId };
+            }
+            if (!Number.isFinite(settings.delayMs) || settings.delayMs < 0) {
+                return { success: false, reason: "invalid-delay", delayMs: settings.delayMs };
+            }
+
+            const state = api.player.get();
+            const restoreId = Number.isInteger(settings.restoreItemId)
+                ? settings.restoreItemId
+                : (state.weaponId !== null
+                    ? state.weaponId
+                    : (settings.restoreWeapon ? lastManuallySelectedWeaponId : null));
+
+            const selection = selectItem(numericId, settings);
+            if (!selection.success) {
+                return { success: false, reason: "item-selection-failed", itemId: numericId, selection: selection };
+            }
+
+            let action = null;
+            let restore = null;
+            try {
+                if (settings.delayMs > 0) await wait(settings.delayMs);
+
+                if (settings.method === "bridge" || selection.method === "moomoo-bridge") {
+                    action = api.bridge.mouse(true, getDirectionRadians(settings));
+                } else {
+                    action = api.input.click({
+                        angle: settings.angle,
+                        distance: settings.distance,
+                        origin: settings.origin,
+                        target: settings.target,
+                        button: settings.button,
+                        restoreMouse: settings.restoreMouse
+                    });
+                }
+            } finally {
+                if (settings.restoreWeapon && restoreId !== null && restoreId >= 0 && restoreId < 16) {
+                    restore = selectItem(restoreId, {
+                        method: settings.method === "bridge" ? "bridge" : "auto",
+                        fallbackToDomClick: settings.fallbackToDomClick
+                    });
+                }
+            }
+
+            return {
+                success: Boolean(action && action.success),
+                itemId: numericId,
+                itemName: ITEM_NAMES[numericId],
+                selection: selection,
+                action: action,
+                restoredWeaponId: restore && restore.success ? restoreId : null,
+                note: "A successful result means the action was dispatched, not that the game server accepted it."
+            };
+        }
+
+        function eat(itemId, options) {
+            const numericId = itemId === undefined ? 16 : Number(itemId);
+            if (![16, 17, 18].includes(numericId)) {
+                return Promise.resolve({ success: false, reason: "not-a-food-item", itemId: numericId });
+            }
+            return useItem(numericId, options);
+        }
+
         function getLastWeaponId() {
             return lastManuallySelectedWeaponId;
         }
@@ -1147,6 +1690,8 @@
         return {
             selectItem: selectItem,
             select: selectItem,
+            useItem: useItem,
+            eat: eat,
             getLastWeaponId: getLastWeaponId,
             setLastWeaponId: setLastWeaponId
         };
@@ -1158,18 +1703,19 @@
 
     const buildModule = api.registerModule("build", function () {
         function getRestoreWeaponId(settings) {
-            return Number.isInteger(settings.restoreItemId)
-                ? settings.restoreItemId
-                : (settings.restoreWeapon ? api.actions.getLastWeaponId() : null);
+            if (Number.isInteger(settings.restoreItemId)) return settings.restoreItemId;
+            if (!settings.restoreWeapon) return null;
+            const currentWeapon = api.player.getCurrentWeaponId();
+            if (Number.isInteger(currentWeapon) && currentWeapon >= 0 && currentWeapon < 16) return currentWeapon;
+            return api.actions.getLastWeaponId();
         }
 
-        function restoreWeapon(restoreId) {
-            if (restoreId !== null &&
-                Number.isInteger(restoreId) &&
-                restoreId >= 0 &&
-                restoreId < 16 &&
-                api.items.isAvailable(restoreId)) {
-                return api.actions.selectItem(restoreId);
+        function restoreWeapon(restoreId, settings) {
+            if (restoreId !== null && Number.isInteger(restoreId) &&
+                restoreId >= 0 && restoreId < 16 && api.items.isAvailable(restoreId)) {
+                return api.actions.selectItem(restoreId, {
+                    method: settings && settings.method === "bridge" ? "bridge" : "auto"
+                });
             }
             return null;
         }
@@ -1196,9 +1742,28 @@
             return api.input.click(clickSettings);
         }
 
+        function dispatchPlacement(settings, forcedAngle, selection) {
+            if (settings.method === "bridge" || (selection && selection.method === "moomoo-bridge")) {
+                let angle;
+                if (isFiniteNumber(settings.directionRadians)) {
+                    angle = settings.directionRadians;
+                } else {
+                    const degrees = isFiniteNumber(forcedAngle)
+                        ? forcedAngle
+                        : (isFiniteNumber(settings.angle)
+                            ? settings.angle
+                            : api.input.getMouseDirection(settings.origin).angle);
+                    angle = degrees * Math.PI / 180;
+                }
+                return api.bridge.mouse(true, angle);
+            }
+            return dispatchClick(settings, forcedAngle);
+        }
+
         function placeItem(itemId, options) {
             const numericId = Number(itemId);
             const settings = Object.assign({
+                method: "auto",
                 distance: 80,
                 restoreWeapon: true
             }, options || {});
@@ -1224,9 +1789,9 @@
             let clickResult = null;
             let restoreResult = null;
             try {
-                clickResult = dispatchClick(settings);
+                clickResult = dispatchPlacement(settings, undefined, selection);
             } finally {
-                restoreResult = restoreWeapon(restoreId);
+                restoreResult = restoreWeapon(restoreId, settings);
             }
 
             return {
@@ -1236,7 +1801,8 @@
                 selection: selection,
                 click: clickResult,
                 restoredWeaponId: restoreResult && restoreResult.success ? restoreId : null,
-                note: "A successful click result means mouse events were dispatched; it does not guarantee server acceptance."
+                method: settings.method === "bridge" || (selection && selection.method === "moomoo-bridge") ? "moomoo-bridge" : "dom",
+                note: "A successful result means the selected action was dispatched; it does not guarantee server acceptance."
             };
         }
 
@@ -1251,11 +1817,13 @@
         // selection for the whole sequence is not enough.
         async function placeItemAtAngles(itemId, angles, options) {
             const numericId = Number(itemId);
+            const suppliedOptions = options || {};
             const settings = Object.assign({
+                method: "auto",
                 distance: 80,
-                intervalMs: 1,
+                intervalMs: suppliedOptions.method === "bridge" ? 111 : 1,
                 restoreWeapon: true
-            }, options || {});
+            }, suppliedOptions);
 
             if (!isValidItemId(numericId) || numericId < 16) {
                 return { success: false, reason: "not-a-build-item", itemId: numericId };
@@ -1294,10 +1862,10 @@
                         break;
                     }
 
-                    clicks.push(dispatchClick(settings, angles[index]));
+                    clicks.push(dispatchPlacement(settings, angles[index], selection));
                 }
             } finally {
-                restoreResult = restoreWeapon(restoreId);
+                restoreResult = restoreWeapon(restoreId, settings);
             }
 
             return {
@@ -1316,7 +1884,8 @@
                 selectionFailure: selectionFailure,
                 clicks: clicks,
                 restoredWeaponId: restoreResult && restoreResult.success ? restoreId : null,
-                note: "The build item is reselected before every click. With intervalMs set to 0, all selection/click pairs run without an intentional delay. The server may still reject individual placements."
+                method: settings.method,
+                note: "The build item is reselected before every action. DOM mode dispatches synthetic mouse events; bridge mode sends a compatible action sequence. Server acceptance is not guaranteed."
             };
         }
 
