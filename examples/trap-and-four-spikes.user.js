@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         MooMooAPI - Mouse Trap and Four Spikes
 // @namespace    https://github.com/CuteDevNya/MooMooAPI
-// @version      0.3.0
+// @version      0.3.1
 // @description  Press F to place a trap toward the mouse, or N to place spikes in four directions.
 // @match        https://moomoo.io/*
 // @match        https://*.moomoo.io/*
 // @run-at       document-idle
 // @grant        none
-// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.3.0
+// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.3.1
 // ==/UserScript==
 
 (function () {
