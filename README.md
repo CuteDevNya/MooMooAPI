@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.6.0).** Built-in modules cover action-bar item detection, resource display parsing, generic item-upgrade tree inspection, item selection, and build/click helpers. The game client can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.7.0).** Built-in modules cover action-bar item detection, resource display parsing, player-state access through an optional bridge, generic upgrade-tree inspection, reusable item-action helpers, and DOM or bridge-based build placement. Client internals can change, and a dispatched action does not prove server acceptance.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.6.0
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.7.0
 ```
 
 Then use the global `MooMooAPI`:
@@ -27,12 +27,14 @@ The library is plain JavaScript and has no build step or third-party dependencie
 
 | Module | Purpose |
 | --- | --- |
-| `input` | Synthetic click helpers, coordinates, angles, optional click hotkeys |
+| `input` | Synthetic clicks, mouse direction, one-shot hotkeys, and hold-to-repeat hotkeys |
 | `items` | Item catalog and visible action-bar item detection |
-| `resources` | Read food, wood, stone and score from dedicated display elements, with a legacy fallback for gold; query recorded item costs |
-| `actions` | Select an action-bar item through the game's `selectToBuild` function when available |
-| `build` | Select a build item, click toward the mouse or at explicit angles, and optionally restore a weapon |
-| `upgrades` | Inspect visible current items, categories, and item upgrade paths for weapons, food, walls, spikes, windmills, and structures |
+| `bridge` | Optional adapter for a compatible `window.MooMoo` state/event/action API |
+| `player` | Player health, alive state, position, selected item, inventory, and lifecycle callbacks when bridge data exists |
+| `resources` | Read resources from bridge state or DOM, subscribe to resource changes, and query recorded item costs |
+| `actions` | Item selection, generic item use, and food-use helpers |
+| `build` | DOM or explicit bridge placement, multi-angle placement, and weapon restoration |
+| `upgrades` | Inspect visible current items, categories, and item upgrade paths |
 
 These modules are based on observed DOM IDs and functions from a userscript. They are not an official game API.
 
@@ -86,9 +88,37 @@ The current catalog contains:
 
 “Available” currently means the matching `#actionBarItem<ID>` element exists and is visible in the DOM. This does not independently verify server-side unlock state.
 
+## Player state and health
+
+The `player` module reads live state only when a compatible `window.MooMoo` bridge is available. Without the bridge it returns `available: false` and unknown state values as `null`; it does not guess health from an unverified DOM selector.
+
+```javascript
+console.log(MooMooAPI.bridge.getCapabilities());
+console.log(MooMooAPI.player.get());
+// Includes health, healthPercent, alive, sid, position, directionRadians,
+// weaponId, buildIndex, buildItemId, actionBarItemId, hats, inventory and resources.
+
+console.log(MooMooAPI.player.getHealth());
+console.log(MooMooAPI.player.getHealthPercent());
+console.log(MooMooAPI.player.isAlive());
+console.log(MooMooAPI.player.getCurrentWeaponId());
+console.log(MooMooAPI.player.getCurrentBuildItemId());
+
+const unbindHealth = MooMooAPI.player.onHealthChange((event) => {
+    console.log("Health changed:", event.previousHealth, "->", event.health);
+});
+const unbindDeath = MooMooAPI.player.onDeath(() => console.log("Player died"));
+
+// Unsubscribe when no longer needed:
+// if (unbindHealth) unbindHealth();
+// if (unbindDeath) unbindDeath();
+```
+
+The bridge is optional and is not bundled into MooMooAPI. The current public [MooMoo.js project](https://github.com/al007ex/MooMoo.js) describes itself as a framework for a private server, not an official MooMoo.io API. Only use its direct action interface on a server/environment you control.
+
 ## Resources
 
-Food, wood, and stone are read from the `innerHTML` of `#foodDisplay`, `#woodDisplay`, and `#stoneDisplay`. The API falls back to the matching child of `#resDisplay` if one of those dedicated elements is unavailable or unparsable. Score is read from `#scoreDisplay` and exposed separately; legacy gold is still read from the fourth child of `#resDisplay` when present.
+When the optional bridge is available, the API prefers the player's state values for food, wood, stone, gold, and score. Otherwise it reads `innerHTML` from `#foodDisplay`, `#woodDisplay`, `#stoneDisplay`, and `#scoreDisplay`, with the previous `#resDisplay` child parsing as a fallback. Each value's source is returned in `resources.sources`.
 
 ```javascript
 const resources = MooMooAPI.resources.get();
@@ -97,6 +127,11 @@ console.log(resources);
 
 console.log(MooMooAPI.resources.getAmount("wood"));
 console.log(MooMooAPI.resources.getScore()); // Same as getAmount("score")
+
+const unbindResources = MooMooAPI.resources.onChange((event) => {
+    console.log(event.name, "changed to", event.value);
+});
+// if (unbindResources) unbindResources();
 console.log(MooMooAPI.resources.canAfford(24)); // Poison Spikes, one placement
 console.log(MooMooAPI.resources.canAfford(24, 4)); // Resources for four Poison Spikes
 ```
@@ -130,6 +165,35 @@ console.log(MooMooAPI.actions.getLastWeaponId());
 Selection now preserves the invocation style from the original working script: `selectToBuild(itemId, true)` for weapons and `selectToBuild(itemId - 16)` for build items, without binding a new `this` context. If that function is unavailable, the API attempts the original `onclick` compatibility fallback before trying `.click()`. The compatibility fallback cannot make a browser-generated trusted event; it only supplies a Proxy to a directly invoked handler.
 
 The API remembers a weapon when the user clicks a visible weapon in the action bar, or when a weapon is selected through `MooMooAPI.actions.selectItem`. Keyboard-based game selections may not be observable through this mechanism; set the restore ID explicitly when necessary.
+
+## Item use and direct actions
+
+`actions.useItem()` selects an action-bar item with ID 16–38, activates it once, and optionally restores the previous/known weapon. `actions.eat()` is the food-only shortcut for Apple (16), Cookie (17), or Cheese (18).
+
+```javascript
+await MooMooAPI.actions.eat(18, {
+    delayMs: 80,
+    restoreWeapon: true
+});
+
+// Use an available item toward the current mouse direction:
+await MooMooAPI.actions.useItem(31, {
+    distance: 80,
+    restoreWeapon: true
+});
+
+// Select an item using the compatible bridge explicitly:
+MooMooAPI.actions.selectItem(24, { method: "bridge" });
+
+// Direct bridge actions use radians, not the API's click-helper degrees:
+MooMooAPI.bridge.aim(Math.PI / 2);
+MooMooAPI.bridge.mouse(true, Math.PI / 2);
+MooMooAPI.bridge.mouse(false);
+MooMooAPI.bridge.setHat(7);
+MooMooAPI.bridge.setAccessory(11);
+```
+
+Item-selection `method` values are `auto` (default), `selectToBuild`, `bridge`, and `dom`. Build placement accepts the same method option. The existing DOM path remains the default path for action execution. The bridge path uses a compatible `window.MooMoo.send` API and is unavailable unless that separate framework is installed. A successful method return means the action was dispatched; it is not confirmation that the server accepted it.
 
 ## Click helpers
 
@@ -200,6 +264,25 @@ MooMooAPI.clickAtAngle(270, 80);
 MooMooAPI.clickAtOffset(30, -20);
 ```
 
+### Hold-to-repeat hotkey
+
+Use `bindRepeatHotkey` for actions that should repeat while a key is held. It fires immediately by default, awaits async callbacks so they do not overlap, and stops on keyup, window blur, or unbind.
+
+```javascript
+const unbind = MooMooAPI.input.bindRepeatHotkey("KeyV", async () => {
+    await MooMooAPI.build.placeItem(31, {
+        distance: 80,
+        restoreWeapon: true
+    });
+}, {
+    intervalMs: 111,
+    minIntervalMs: 40,
+    preventDefault: true
+});
+
+// Later: unbind();
+```
+
 ### Optional click hotkey
 
 ```javascript
@@ -236,7 +319,7 @@ await MooMooAPI.build.placeItemAtAngles(22, [270, 0, 90, 180], {
 });
 ```
 
-The multi-angle helper reselects the build item before every click, because the game may switch back to the Stick after placement. It uses `intervalMs: 1` by default, introducing a minimal yield between selection/click pairs so the client can process each one separately. You can increase `intervalMs` if the client needs extra time. Use `await` with `placeItemAtAngles`. The server may still reject an individual placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
+The multi-angle helper reselects the build item before every action, because the game may switch back to the Stick after placement. DOM mode uses `intervalMs: 1` by default. Explicit bridge mode defaults to one server-tick-sized interval (111ms) and sends a direct action sequence in radians. You can change `intervalMs` and must use `await` with `placeItemAtAngles`. The server may still reject an individual placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
 
 ## Upgrade trees and current items
 
@@ -276,7 +359,7 @@ The known upgrade lines in the built-in catalog are:
 
 These names and paths were cross-checked against the community-maintained [MooMoo.io Wiki's Hotbar page](https://moomooio.fandom.com/wiki/Hotbar) and [Age page](https://moomooio.fandom.com/wiki/Age). They reflect the currently documented item tree, not a guarantee that the live client will never change.
 
-See [examples/upgrade-tree-demo.user.js](examples/upgrade-tree-demo.user.js) for a category snapshot and [examples/build-item-demo.user.js](examples/build-item-demo.user.js) for generic build placement. The [click demo](examples/click-demo.user.js) shows how to bind an optional keyboard shortcut.
+See [examples/player-state-demo.user.js](examples/player-state-demo.user.js) for state/event inspection, [examples/upgrade-tree-demo.user.js](examples/upgrade-tree-demo.user.js) for upgrade categories, [examples/build-item-demo.user.js](examples/build-item-demo.user.js) for placement, and [examples/click-demo.user.js](examples/click-demo.user.js) for input handling.
 
 ## Adding new functionality
 
@@ -298,6 +381,8 @@ console.log(MooMooAPI.example.hello());
 Each module factory receives the main API object and returns an object of functions. The module is available as both `MooMooAPI.example` and `MooMooAPI.modules.example`. Module names must be unique and must not replace an existing API property.
 
 ## Important limitations
+- Live player state and event callbacks require the optional `window.MooMoo` bridge; without it, the player module reports unknown values instead of guessing.
+- The bridge uses radians for directions. The external MooMoo.js project's current public repository states it is intended for a private server, not as an official API.
 
 - This is a browser-side userscript library, not a server API.
 - The click helpers dispatch **synthetic** DOM mouse events. These events have `isTrusted === false`; the game may ignore them or change its event target.
