@@ -19,8 +19,8 @@ Thanks for helping improve MooMooAPI. This project is an early client-side found
 - `items`: action-bar catalog and DOM visibility checks.
 - `resources`: resource count parsing and the currently known spike costs.
 - `actions`: game item selection, preferring `selectToBuild` when available.
-- `build`: item selection followed by a click and optional weapon restoration.
-- `spikes`: priority-based spike selection and an optional hotkey binding.
+- `build`: item selection followed by mouse-directed, coordinate-based, or multi-angle clicks, with optional weapon restoration.
+- `spikes`: priority-based spike selection, a single placement helper, and four-way placement.
 
 DOM visibility is a client-side signal, not an independent proof of server-side ownership or unlock state.
 
