@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.5.0).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.6.0).** Built-in modules cover action-bar item detection, resource display parsing, generic item-upgrade tree inspection, item selection, and build/click helpers. The game client can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.5.0
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.6.0
 ```
 
 Then use the global `MooMooAPI`:
@@ -29,10 +29,10 @@ The library is plain JavaScript and has no build step or third-party dependencie
 | --- | --- |
 | `input` | Synthetic click helpers, coordinates, angles, optional click hotkeys |
 | `items` | Item catalog and visible action-bar item detection |
-| `resources` | Read food, wood, stone and score from dedicated display elements, with a legacy fallback for gold; known spike costs |
+| `resources` | Read food, wood, stone and score from dedicated display elements, with a legacy fallback for gold; query recorded item costs |
 | `actions` | Select an action-bar item through the game's `selectToBuild` function when available |
 | `build` | Select a build item, click toward the mouse or at explicit angles, and optionally restore a weapon |
-| `spikes` | Pick the best visible spike variant by priority and place one spike or a four-direction cross |
+| `upgrades` | Inspect visible current items, categories, and item upgrade paths for weapons, food, walls, spikes, windmills, and structures |
 
 These modules are based on observed DOM IDs and functions from a userscript. They are not an official game API.
 
@@ -77,7 +77,7 @@ The current catalog contains:
 | 11 | Wooden Shield | 31 | Pit Trap |
 | 12 | Crossbow | 32 | Boost Pad |
 | 13 | Repeater Crossbow | 33 | Turret |
-| 14 | MC Grabby | 34 | Platform |
+| 14 | Mc Grabby | 34 | Platform |
 | 15 | Musket | 35 | Healing Pad |
 | 16 | Apple | 36 | Spawn Pad |
 | 17 | Cookie | 37 | Blocker |
@@ -238,53 +238,43 @@ await MooMooAPI.build.placeItemAtAngles(22, [270, 0, 90, 180], {
 
 The multi-angle helper reselects the build item before every click, because the game may switch back to the Stick after placement. It uses `intervalMs: 1` by default, introducing a minimal yield between selection/click pairs so the client can process each one separately. You can increase `intervalMs` if the client needs extra time. Use `await` with `placeItemAtAngles`. The server may still reject an individual placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
 
-## Spike helpers
+## Upgrade trees and current items
 
-The priority, highest first, is Poison Spikes (24), Spinning Spikes (25), Greater Spikes (23), and normal Spikes (22).
-
-```javascript
-// Inspect visible spike variants and resource affordability:
-console.log(MooMooAPI.spikes.getAvailable());
-console.log(MooMooAPI.spikes.getBestAvailable());
-
-// Attempt to place the best affordable visible variant:
-console.log(MooMooAPI.spikes.placeBest({
-    angle: 270,
-    distance: 80,
-    checkResources: true,
-    restoreWeapon: true
-}));
-
-// Place the chosen spike variant up, right, down, and left in a rapid sequence:
-console.log(await MooMooAPI.spikes.placeCross({
-    angles: [270, 0, 90, 180],
-    distance: 80,
-    intervalMs: 1,
-    checkResources: true,
-    unknownResources: "allow",
-    restoreWeapon: true
-}));
-```
-
-To make a macro, bind a key explicitly. No key is bound automatically by loading the library:
+The `upgrades` module reads the items that are currently visible in the game's action bar. It does **not** claim to know which item is selected in the player's hand at this exact moment. A result with `id: null` means no item was visible in that category or the visible items were ambiguous; the API will not guess between competing end branches.
 
 ```javascript
-const unbindSpikes = MooMooAPI.spikes.bindHotkey("KeyN", {
-    angle: 270,
-    distance: 80,
-    checkResources: true,
-    restoreWeapon: true
-});
+// IDs refer to the action-bar item IDs used by MooMooAPI.
+console.log(MooMooAPI.upgrades.getPrimaryWeaponId());   // Short Sword, Katana, Stick, etc.
+console.log(MooMooAPI.upgrades.getSecondaryWeaponId()); // Bow, Crossbow, Great Hammer, Shield, etc.
+console.log(MooMooAPI.upgrades.getFoodId());             // Apple, Cookie, or Cheese
+console.log(MooMooAPI.upgrades.getWallId());             // Wood Wall, Stone Wall, or Castle Wall
+console.log(MooMooAPI.upgrades.getSpikeId());            // Spikes, Greater, Poison, or Spinning
+console.log(MooMooAPI.upgrades.getWindmillId());         // Windmill, Faster Windmill, or Power Mill
 
-// Later, to remove the key listener:
-// unbindSpikes();
+// Generic category methods:
+console.log(MooMooAPI.upgrades.getCurrentId("secondaryWeapon"));
+console.log(MooMooAPI.upgrades.getCurrent("food"));
+console.log(MooMooAPI.upgrades.getAvailable("spikes"));
+console.log(MooMooAPI.upgrades.getTree("spikes"));
+console.log(MooMooAPI.upgrades.getUpgradePath(24)); // Paths which include Poison Spikes
+console.log(MooMooAPI.upgrades.getAllCurrent());
 ```
 
-If resource values cannot be read, spike placement follows the original macro's behavior and continues by spike priority, returning `resourceCheck: "unknown"` and a warning. Set `unknownResources: "reject"` to stop instead. Set `checkResources: false` to skip affordability checks entirely. `placeCross` checks the total known resource cost for all requested placements, not just one spike.
+The known upgrade lines in the built-in catalog are:
 
-The [trap-and-four-spikes example](examples/trap-and-four-spikes.user.js) binds **F** to place a Pit Trap toward the mouse, falling back to a Boost Pad if the trap item is unavailable. It binds **N** to place the best affordable spike variant up, right, down, and left. Multi-angle placement reselects the spike before each click and defaults to `intervalMs: 1`, which yields briefly between selection/click pairs. If the game client still drops actions, try a small positive interval.
+| Category | Upgrade line(s) |
+| --- | --- |
+| Primary weapon | Tool Hammer (0); Hand Axe (1) → Great Axe (2); Short Sword (3) → Katana (4); Polearm (5), Bat (6), Daggers (7), Stick (8) |
+| Secondary weapon | Hunting Bow (9) → Crossbow (12) → Repeater Crossbow (13) **or** Musket (15); Great Hammer (10), Wooden Shield (11), Mc Grabby (14) |
+| Food | Apple (16) → Cookie (17) → Cheese (18) |
+| Walls | Wood Wall (19) → Stone Wall (20) → Castle Wall (21) |
+| Spikes | Spikes (22) → Greater Spikes (23) → Poison Spikes (24) **or** Spinning Spikes (25) |
+| Windmills | Windmill (26) → Faster Windmill (27) → Power Mill (28) |
+| Other structures | Mine (29), Sapling (30), Pit Trap (31), Boost Pad (32), Turret (33), Platform (34), Healing Pad (35), Spawn Pad (36), Blocker (37), Teleporter (38) |
 
-See [examples/click-demo.user.js](examples/click-demo.user.js), [examples/spike-macro.user.js](examples/spike-macro.user.js), and [examples/trap-and-four-spikes.user.js](examples/trap-and-four-spikes.user.js) for complete userscripts.
+`getTree(category)` returns the complete tracked paths for a category, with item metadata including the age at which the item is listed as unlocked. `getUpgradePath(itemId)` returns every tracked path containing that item; it can return more than one path for a branch point such as Crossbow.
+
+These names and paths were cross-checked against the community-maintained [MooMoo.io Wiki's Hotbar page](https://moomooio.fandom.com/wiki/Hotbar) and [Age page](https://moomooio.fandom.com/wiki/Age). They reflect the currently documented item tree, not a guarantee that the live client will never change.
 
 ## Adding new functionality
 
