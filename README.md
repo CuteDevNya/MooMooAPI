@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.2.1).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.2.2).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.2.2
 ```
 
 Then use the global `MooMooAPI`:
