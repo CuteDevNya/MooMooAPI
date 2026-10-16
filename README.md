@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.3.0).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.3.1).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.3.0
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.3.1
 ```
 
 Then use the global `MooMooAPI`:
@@ -96,7 +96,8 @@ console.log(resources);
 // { food: ..., wood: ..., stone: ..., gold: ..., known: true }
 
 console.log(MooMooAPI.resources.getAmount("wood"));
-console.log(MooMooAPI.resources.canAfford(24)); // Poison Spikes
+console.log(MooMooAPI.resources.canAfford(24)); // Poison Spikes, one placement
+console.log(MooMooAPI.resources.canAfford(24, 4)); // Resources for four Poison Spikes
 ```
 
 If the element is missing or a number cannot be parsed, the API returns `null` for unknown values instead of assuming the player can afford an item. Only the following spike costs have been added from the supplied userscript; costs for other items are not yet known here:
@@ -276,7 +277,7 @@ const unbindSpikes = MooMooAPI.spikes.bindHotkey("KeyN", {
 // unbindSpikes();
 ```
 
-If resource values cannot be read, `placeBest` now follows the original macro's behavior and continues by spike priority, returning `resourceCheck: "unknown"` and a warning. Set `unknownResources: "reject"` to stop instead. Set `checkResources: false` to skip affordability checks entirely.
+If resource values cannot be read, spike placement follows the original macro's behavior and continues by spike priority, returning `resourceCheck: "unknown"` and a warning. Set `unknownResources: "reject"` to stop instead. Set `checkResources: false` to skip affordability checks entirely. `placeCross` checks the total known resource cost for all requested placements, not just one spike.
 
 See [examples/click-demo.user.js](examples/click-demo.user.js), [examples/spike-macro.user.js](examples/spike-macro.user.js), and [examples/trap-and-four-spikes.user.js](examples/trap-and-four-spikes.user.js) for complete userscripts.
 
