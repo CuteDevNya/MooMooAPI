@@ -809,7 +809,7 @@
                 throw new TypeError("[MooMooAPI] An upgrade category name is required.");
             }
 
-            const normalized = category.toLowerCase().replace(/[\\s_-]/g, "");
+            const normalized = category.toLowerCase().replace(/[\s_-]/g, "");
             const resolved = UPGRADE_CATEGORY_ALIASES[normalized];
             if (!resolved || !UPGRADE_TREES[resolved]) {
                 throw new TypeError("[MooMooAPI] Unknown upgrade category: " + category);
