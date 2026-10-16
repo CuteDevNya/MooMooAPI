@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         MooMooAPI - Mouse Trap and Four Spikes
 // @namespace    https://github.com/CuteDevNya/MooMooAPI
-// @version      0.4.1
+// @version      0.4.2
 // @description  Press F to place a trap (or boost pad fallback) toward the mouse, or N to place spikes in four directions.
 // @match        https://moomoo.io/*
 // @match        https://*.moomoo.io/*
 // @run-at       document-idle
 // @grant        none
-// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.4.1
+// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.4.2
 // ==/UserScript==
 
 (function () {
@@ -73,11 +73,12 @@
             } else {
                 // Highest-priority visible and affordable spike variant.
                 // Reselect the spike before every placement because the game may
-                // switch back to the Stick after each placement. No intentional delay.
+                // switch back to the Stick after each placement. A 1ms interval lets
+                // the client process each selection/click pair separately.
                 result = await api.spikes.placeCross({
                     angles: [270, 0, 90, 180], // Up, right, down, left
                     distance: 80,
-                    intervalMs: 0,
+                    intervalMs: 1,
                     checkResources: true,
                     unknownResources: "allow",
                     restoreWeapon: true
