@@ -2,7 +2,7 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.2.0).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.2.1).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
@@ -125,7 +125,7 @@ MooMooAPI.actions.setLastWeaponId(3);
 console.log(MooMooAPI.actions.getLastWeaponId());
 ```
 
-Selection prefers the game's `selectToBuild` function if it is accessible. If it is not available, the API optionally calls the element's ordinary `.click()` method. It does not spoof `event.isTrusted`.
+Selection prefers the game's `selectToBuild` function if it is accessible. If it is not available, the API tries the action-bar element's `onclick` handler with a synthetic MouseEvent, then falls back to `.click()`. Synthetic events remain untrusted; this cannot guarantee that the game will accept them.
 
 The API remembers a weapon when the user clicks a visible weapon in the action bar, or when a weapon is selected through `MooMooAPI.actions.selectItem`. Keyboard-based game selections may not be observable through this mechanism; set the restore ID explicitly when necessary.
 
