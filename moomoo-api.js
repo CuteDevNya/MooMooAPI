@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.4.0
+ * MooMooAPI v0.4.1
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.4.0";
+    const VERSION = "0.4.1";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -939,13 +939,14 @@
             });
         }
 
-        // Select one build item, then dispatch each click in a separate browser task.
-        // The short gap lets the client process each mouse down/up pair independently.
+        // Select the build item before every placement. MooMoo.io may switch
+        // back to the default weapon after a successful placement, so one
+        // selection for the whole sequence is not enough.
         async function placeItemAtAngles(itemId, angles, options) {
             const numericId = Number(itemId);
             const settings = Object.assign({
                 distance: 80,
-                intervalMs: 35,
+                intervalMs: 0,
                 restoreWeapon: true
             }, options || {});
 
@@ -961,18 +962,31 @@
             }
 
             const restoreId = getRestoreWeaponId(settings);
-            const selection = api.actions.selectItem(numericId, settings);
-            if (!selection.success) {
-                return { success: false, reason: "item-selection-failed", selection: selection };
-            }
-
+            const selections = [];
             const clicks = [];
+            let selectionFailure = null;
             let restoreResult = null;
+
             try {
                 for (let index = 0; index < angles.length; index++) {
                     if (index > 0 && settings.intervalMs > 0) {
                         await waitBetweenPlacements(settings.intervalMs);
                     }
+
+                    // Reselect on every iteration because the game can auto-select
+                    // the Stick after the previous building placement.
+                    const selection = api.actions.selectItem(numericId, settings);
+                    selections.push(selection);
+
+                    if (!selection.success) {
+                        selectionFailure = {
+                            index: index,
+                            angle: angles[index],
+                            selection: selection
+                        };
+                        break;
+                    }
+
                     clicks.push(dispatchClick(settings, angles[index]));
                 }
             } finally {
@@ -980,17 +994,22 @@
             }
 
             return {
-                success: clicks.length === angles.length && clicks.every(function (result) {
-                    return result && result.success;
-                }),
+                success: !selectionFailure &&
+                    clicks.length === angles.length &&
+                    clicks.every(function (result) {
+                        return result && result.success;
+                    }),
+                reason: selectionFailure ? "item-selection-failed" : null,
                 itemId: numericId,
                 itemName: ITEM_NAMES[numericId],
                 angles: angles.slice(),
                 intervalMs: settings.intervalMs,
-                selection: selection,
+                selection: selections[0] || null,
+                selections: selections,
+                selectionFailure: selectionFailure,
                 clicks: clicks,
                 restoredWeaponId: restoreResult && restoreResult.success ? restoreId : null,
-                note: "Clicks are dispatched in separate browser tasks with a short configurable interval. The server may still reject an individual placement."
+                note: "The build item is reselected before every click. With intervalMs set to 0, all selection/click pairs run without an intentional delay. The server may still reject individual placements."
             };
         }
 
@@ -1129,7 +1148,7 @@
                 unknownResources: "allow",
                 angles: [270, 0, 90, 180],
                 distance: 80,
-                intervalMs: 35,
+                intervalMs: 0,
                 restoreWeapon: true
             }, options || {});
 
