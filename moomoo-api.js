@@ -686,10 +686,10 @@
             if (selectFunction) {
                 try {
                     if (numericId < 16) {
-                        selectFunction(numericId, true);
+                        selectFunction.call(window, numericId, true);
                         lastManuallySelectedWeaponId = numericId;
                     } else {
-                        selectFunction(numericId - 16);
+                        selectFunction.call(window, numericId - 16);
                     }
 
                     return {
