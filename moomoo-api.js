@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.2.0
+ * MooMooAPI v0.2.1
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.2.0";
+    const VERSION = "0.2.1";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -708,24 +708,14 @@
                     // Some client versions attach selection logic directly to onclick.
                     // Call that handler directly as a compatibility fallback. This is
                     // still a synthetic event and must not be treated as server proof.
-                    const baseEvent = new window.MouseEvent("click", {
+                    const handlerEvent = new window.MouseEvent("click", {
                         bubbles: true,
                         cancelable: true,
                         view: window,
                         button: 0
                     });
 
-                    const handlerEvent = new Proxy(baseEvent, {
-                        get(target, property) {
-                            if (property === "isTrusted") return true;
-
-                            const value = Reflect.get(target, property, target);
-                            return typeof value === "function"
-                                ? value.bind(target)
-                                : value;
-                        }
-                    });
-
+                    // Keep the event synthetic; never pretend browser-generated trust.
                     element.onclick.call(element, handlerEvent);
                     if (numericId < 16) lastManuallySelectedWeaponId = numericId;
 
