@@ -15,12 +15,14 @@ Thanks for helping improve MooMooAPI. This project is an early client-side found
 
 ## Current built-in modules
 
-- `input`: synthetic pointer events and optional click shortcuts.
+- `input`: synthetic pointer events, one-shot hotkeys, and repeat-while-held hotkeys with cleanup.
 - `items`: action-bar catalog and DOM visibility checks.
-- `resources`: reads food, wood, stone, and score from dedicated display elements, retains a legacy resource-display fallback, and exposes recorded item costs.
+- `bridge`: optional adapter for the `window.MooMoo` state/events/actions surface.
+- `player`: state snapshots and health, death, spawn, inventory, and value callbacks when bridge data exists.
+- `resources`: prefers bridge state when available, falls back to dedicated DOM displays, and exposes recorded costs.
 - `upgrades`: identifies visible current items by category and describes tracked upgrade paths.
-- `actions`: game item selection, preferring `selectToBuild` when available.
-- `build`: item selection followed by mouse-directed, coordinate-based, or multi-angle clicks, with optional weapon restoration.
+- `actions`: item selection, generic item use, and food-use helpers; bridge sending is explicit or used as a fallback when compatible.
+- `build`: DOM or bridge placement, multi-angle placement, and optional weapon restoration.
 
 DOM visibility is a client-side signal, not an independent proof of server-side ownership or unlock state.
 
@@ -50,7 +52,7 @@ When adding a built-in module:
 
 ## Click and action notes
 
-The input helpers dispatch synthetic DOM mouse events to a configurable target. A successful dispatch only means the DOM accepted the dispatch; it does not guarantee that the game acted on it or that the server accepted the action.
+The input helpers dispatch synthetic DOM mouse events to a configurable target. Hold-to-repeat callbacks await asynchronous work, cancel on keyup and blur, and enforce a configurable minimum interval. A successful dispatch only means the DOM accepted the dispatch; it does not guarantee server acceptance. The optional bridge can read state and send semantic actions only when a compatible `window.MooMoo` runtime is present.
 
 The `selectToBuild` function and action-bar DOM IDs are observed client implementation details. They may change during a game update. Keep fallbacks explicit, report failure reasons, and do not describe client-side action calls as guaranteed results.
 
