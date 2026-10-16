@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         MooMooAPI - Build Item Demo
 // @namespace    https://github.com/CuteDevNya/MooMooAPI
-// @version      0.6.0
+// @version      0.7.0
 // @description  Press F to place a visible Pit Trap or Boost Pad toward the mouse.
 // @match        https://moomoo.io/*
 // @match        https://*.moomoo.io/*
 // @run-at       document-idle
 // @grant        none
-// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.6.0
+// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.7.0
 // ==/UserScript==
 
 (function () {
