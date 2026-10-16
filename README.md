@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.3.1).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.4.0).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.3.1
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.4.0
 ```
 
 Then use the global `MooMooAPI`:
@@ -228,13 +228,14 @@ MooMooAPI.build.placeItem(24, {
 });
 
 // Place one item at several angles after selecting it just once:
-MooMooAPI.build.placeItemAtAngles(22, [270, 0, 90, 180], {
+await MooMooAPI.build.placeItemAtAngles(22, [270, 0, 90, 180], {
     distance: 80,
+    intervalMs: 35,
     restoreWeapon: true
 });
 ```
 
-No intentional delays are inserted between the click events. It is not proof that the game accepted each placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
+The multi-angle helper is asynchronous and waits `intervalMs` between clicks (35ms by default), so the game client gets separate browser tasks to process each mouse down/up pair. Use `await` with `placeItemAtAngles`. The server may still reject an individual placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
 
 ## Spike helpers
 
@@ -253,10 +254,11 @@ console.log(MooMooAPI.spikes.placeBest({
     restoreWeapon: true
 }));
 
-// Place the chosen spike variant up, right, down, and left in one synchronous burst:
-console.log(MooMooAPI.spikes.placeCross({
+// Place the chosen spike variant up, right, down, and left in a rapid sequence:
+console.log(await MooMooAPI.spikes.placeCross({
     angles: [270, 0, 90, 180],
     distance: 80,
+    intervalMs: 35,
     checkResources: true,
     unknownResources: "allow",
     restoreWeapon: true
