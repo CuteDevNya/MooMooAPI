@@ -703,6 +703,43 @@
                 }
             }
 
+            if (settings.fallbackToDomClick && typeof element.onclick === "function") {
+                try {
+                    // Some client versions attach selection logic directly to onclick.
+                    // Call that handler directly as a compatibility fallback. This is
+                    // still a synthetic event and must not be treated as server proof.
+                    const baseEvent = new window.MouseEvent("click", {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window,
+                        button: 0
+                    });
+
+                    const handlerEvent = new Proxy(baseEvent, {
+                        get(target, property) {
+                            if (property === "isTrusted") return true;
+
+                            const value = Reflect.get(target, property, target);
+                            return typeof value === "function"
+                                ? value.bind(target)
+                                : value;
+                        }
+                    });
+
+                    element.onclick.call(element, handlerEvent);
+                    if (numericId < 16) lastManuallySelectedWeaponId = numericId;
+
+                    return {
+                        success: true,
+                        itemId: numericId,
+                        name: ITEM_NAMES[numericId],
+                        method: "onclick-handler"
+                    };
+                } catch (error) {
+                    console.warn("[MooMooAPI] onclick fallback failed; trying DOM click.", error);
+                }
+            }
+
             if (settings.fallbackToDomClick && typeof element.click === "function") {
                 try {
                     element.click();
@@ -857,7 +894,13 @@
         }
 
         function getBestAvailable(options) {
-            const settings = Object.assign({ checkResources: true }, options || {});
+            // Match the original macro: if the resource display cannot be read,
+            // continue by priority rather than preventing item selection entirely.
+            // Set unknownResources: "reject" to require a known resource state.
+            const settings = Object.assign({
+                checkResources: true,
+                unknownResources: "allow"
+            }, options || {});
             const candidates = getAvailable(settings);
 
             if (!candidates.length) {
@@ -869,18 +912,11 @@
             }
 
             if (!settings.checkResources) {
-                return { success: true, item: candidates[0], candidates: candidates };
-            }
-
-            const unknown = candidates.filter(function (candidate) {
-                return candidate.affordability.affordable === null;
-            });
-
-            if (unknown.length) {
                 return {
-                    success: false,
-                    reason: "resource-state-unknown",
-                    candidates: candidates
+                    success: true,
+                    item: candidates[0],
+                    candidates: candidates,
+                    resourceCheck: "skipped"
                 };
             }
 
@@ -888,32 +924,66 @@
                 return candidate.affordability.affordable === true;
             });
 
-            if (!best) {
+            if (best) {
                 return {
-                    success: false,
-                    reason: "not-enough-resources",
-                    candidates: candidates
+                    success: true,
+                    item: best,
+                    candidates: candidates,
+                    resourceCheck: "passed"
                 };
             }
 
-            return { success: true, item: best, candidates: candidates };
+            const unknown = candidates.filter(function (candidate) {
+                return candidate.affordability.affordable === null;
+            });
+
+            if (unknown.length) {
+                if (settings.unknownResources === "reject") {
+                    return {
+                        success: false,
+                        reason: "resource-state-unknown",
+                        candidates: candidates,
+                        resourceCheck: "unknown"
+                    };
+                }
+
+                return {
+                    success: true,
+                    item: unknown[0],
+                    candidates: candidates,
+                    resourceCheck: "unknown",
+                    warning: "Resource values could not be read; using spike priority without affordability verification."
+                };
+            }
+
+            return {
+                success: false,
+                reason: "not-enough-resources",
+                candidates: candidates,
+                resourceCheck: "failed"
+            };
         }
 
         function placeBest(options) {
             const settings = Object.assign({
                 checkResources: true,
+                unknownResources: "allow",
                 angle: 270,
                 distance: 80,
                 restoreWeapon: true
             }, options || {});
 
             const chosen = getBestAvailable({
-                checkResources: settings.checkResources
+                checkResources: settings.checkResources,
+                unknownResources: settings.unknownResources
             });
 
             if (!chosen.success) return chosen;
 
-            return api.build.placeItem(chosen.item.id, settings);
+            const result = api.build.placeItem(chosen.item.id, settings);
+            result.resourceCheck = chosen.resourceCheck;
+            if (chosen.warning) result.warning = chosen.warning;
+            return result;
         }
 
         function bindHotkey(code, options, hotkeyOptions) {
@@ -948,6 +1018,8 @@
                 const result = placeBest(placementOptions);
                 if (!result.success) {
                     console.warn("[MooMooAPI] Spike placement did not complete:", result);
+                } else if (result.warning) {
+                    console.warn("[MooMooAPI] Spike placement used a fallback:", result.warning, result);
                 }
             }
 
