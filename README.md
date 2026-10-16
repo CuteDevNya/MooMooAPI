@@ -276,6 +276,8 @@ The known upgrade lines in the built-in catalog are:
 
 These names and paths were cross-checked against the community-maintained [MooMoo.io Wiki's Hotbar page](https://moomooio.fandom.com/wiki/Hotbar) and [Age page](https://moomooio.fandom.com/wiki/Age). They reflect the currently documented item tree, not a guarantee that the live client will never change.
 
+See [examples/upgrade-tree-demo.user.js](examples/upgrade-tree-demo.user.js) for a category snapshot and [examples/build-item-demo.user.js](examples/build-item-demo.user.js) for generic build placement. The [click demo](examples/click-demo.user.js) shows how to bind an optional keyboard shortcut.
+
 ## Adding new functionality
 
 Features are organized as modules. Register a new module from your own userscript or add a built-in module to the project:
