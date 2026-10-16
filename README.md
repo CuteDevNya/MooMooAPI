@@ -260,7 +260,7 @@ const unbindSpikes = MooMooAPI.spikes.bindHotkey("KeyN", {
 // unbindSpikes();
 ```
 
-When resource values cannot be read, `placeBest` stops with a `resource-state-unknown` result by default instead of guessing. Set `checkResources: false` to skip the resource check deliberately.
+If resource values cannot be read, `placeBest` now follows the original macro's behavior and continues by spike priority, returning `resourceCheck: "unknown"` and a warning. Set `unknownResources: "reject"` to stop instead. Set `checkResources: false` to skip affordability checks entirely.
 
 See [examples/click-demo.user.js](examples/click-demo.user.js) and [examples/spike-macro.user.js](examples/spike-macro.user.js) for complete userscripts.
 
