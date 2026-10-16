@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.3.0
+ * MooMooAPI v0.3.1
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.3.0";
+    const VERSION = "0.3.1";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -599,24 +599,44 @@
             return cost ? Object.assign({}, cost) : null;
         }
 
-        function canAfford(itemId) {
-            const cost = getCost(itemId);
-            if (!cost) {
+        function canAfford(itemId, quantity) {
+            const numericId = Number(itemId);
+            const count = quantity === undefined ? 1 : Number(quantity);
+            if (!Number.isInteger(count) || count < 1) {
                 return {
                     known: false,
                     affordable: null,
-                    itemId: Number(itemId),
+                    itemId: numericId,
+                    quantity: count,
+                    cost: null,
+                    reason: "invalid-quantity"
+                };
+            }
+
+            const unitCost = getCost(numericId);
+            if (!unitCost) {
+                return {
+                    known: false,
+                    affordable: null,
+                    itemId: numericId,
+                    quantity: count,
                     cost: null,
                     reason: "cost-not-known-for-this-item"
                 };
             }
 
+            const cost = {
+                wood: unitCost.wood * count,
+                stone: unitCost.stone * count
+            };
             const amounts = get();
             if (amounts.wood === null || amounts.stone === null) {
                 return {
                     known: false,
                     affordable: null,
-                    itemId: Number(itemId),
+                    itemId: numericId,
+                    quantity: count,
+                    unitCost: unitCost,
                     cost: cost,
                     resources: amounts,
                     reason: "resource-values-unknown"
@@ -630,7 +650,9 @@
             return {
                 known: true,
                 affordable: Object.keys(missing).length === 0,
-                itemId: Number(itemId),
+                itemId: numericId,
+                quantity: count,
+                unitCost: unitCost,
                 cost: cost,
                 resources: amounts,
                 missing: missing
@@ -971,14 +993,14 @@
 
     const spikesModule = api.registerModule("spikes", function () {
         function getAvailable(options) {
-            const settings = Object.assign({ checkResources: true }, options || {});
+            const settings = Object.assign({ checkResources: true, quantity: 1 }, options || {});
             const result = [];
 
             for (const itemId of SPIKE_PRIORITY) {
                 if (!api.items.isAvailable(itemId)) continue;
 
                 const affordability = settings.checkResources
-                    ? api.resources.canAfford(itemId)
+                    ? api.resources.canAfford(itemId, settings.quantity)
                     : { known: false, affordable: null, reason: "resource-check-disabled" };
 
                 result.push({
@@ -998,7 +1020,8 @@
             // Set unknownResources: "reject" to require a known resource state.
             const settings = Object.assign({
                 checkResources: true,
-                unknownResources: "allow"
+                unknownResources: "allow",
+                quantity: 1
             }, options || {});
             const candidates = getAvailable(settings);
 
@@ -1094,9 +1117,16 @@
                 restoreWeapon: true
             }, options || {});
 
+            if (!Array.isArray(settings.angles) ||
+                settings.angles.length === 0 ||
+                !settings.angles.every(isFiniteNumber)) {
+                return { success: false, reason: "invalid-angles", angles: settings.angles };
+            }
+
             const chosen = getBestAvailable({
                 checkResources: settings.checkResources,
-                unknownResources: settings.unknownResources
+                unknownResources: settings.unknownResources,
+                quantity: settings.angles.length
             });
             if (!chosen.success) return chosen;
 
@@ -1107,6 +1137,7 @@
             );
             result.resourceCheck = chosen.resourceCheck;
             if (chosen.warning) result.warning = chosen.warning;
+            result.quantity = settings.angles.length;
             return result;
         }
 
