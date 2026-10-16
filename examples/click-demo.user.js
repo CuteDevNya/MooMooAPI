@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         MooMooAPI - Click Demo
 // @namespace    https://github.com/CuteDevNya/MooMooAPI
-// @version      0.2.3
+// @version      0.3.0
 // @description  Demo hotkey for MooMooAPI click helpers.
 // @match        https://moomoo.io/*
 // @match        https://*.moomoo.io/*
 // @run-at       document-idle
 // @grant        none
-// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.2.3
+// @require      https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.3.0
 // ==/UserScript==
 
 (function () {
@@ -21,11 +21,10 @@
     }
 
     api.ready().then(function () {
-        // Press N to click 80 pixels above the viewport center.
+        // Press N to click 80 pixels in the direction of the current mouse pointer.
         const unbind = api.input.bindClickHotkey(
             "KeyN",
             {
-                angle: 270,
                 distance: 80
             },
             {
