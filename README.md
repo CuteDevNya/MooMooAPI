@@ -2,14 +2,14 @@
 
 A modular JavaScript helper library for Tampermonkey userscripts targeting the MooMoo.io browser client.
 
-> **Current status: early development (v0.4.1).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
+> **Current status: early development (v0.4.2).** Built-in modules currently cover action-bar item detection, resource display parsing, item selection, click helpers, and a first spike-placement helper. The official game can change at any time; verify behavior in the current browser client. A successful DOM event dispatch does not prove that the server accepted an action.
 
 ## Install with Tampermonkey
 
 Add this metadata line to your userscript:
 
 ```javascript
-// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.4.1
+// @require https://raw.githubusercontent.com/CuteDevNya/MooMooAPI/main/moomoo-api.js?v=0.4.2
 ```
 
 Then use the global `MooMooAPI`:
@@ -230,12 +230,12 @@ MooMooAPI.build.placeItem(24, {
 // Place one item at several angles after selecting it just once:
 await MooMooAPI.build.placeItemAtAngles(22, [270, 0, 90, 180], {
     distance: 80,
-    intervalMs: 0,
+    intervalMs: 1,
     restoreWeapon: true
 });
 ```
 
-The multi-angle helper reselects the build item before every click, because the game may switch back to the Stick after placement. It uses `intervalMs: 0` by default, so all selection/click pairs run without an intentional delay. You can set a positive `intervalMs` if the client needs extra time. Use `await` with `placeItemAtAngles`. The server may still reject an individual placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
+The multi-angle helper reselects the build item before every click, because the game may switch back to the Stick after placement. It uses `intervalMs: 1` by default, so all selection/click pairs run without an intentional delay. You can increase `intervalMs` if the client needs extra time. Use `await` with `placeItemAtAngles`. The server may still reject an individual placement. If no restore weapon has been detected, the build item can remain selected unless `restoreItemId` is provided.
 
 ## Spike helpers
 
@@ -281,7 +281,7 @@ const unbindSpikes = MooMooAPI.spikes.bindHotkey("KeyN", {
 
 If resource values cannot be read, spike placement follows the original macro's behavior and continues by spike priority, returning `resourceCheck: "unknown"` and a warning. Set `unknownResources: "reject"` to stop instead. Set `checkResources: false` to skip affordability checks entirely. `placeCross` checks the total known resource cost for all requested placements, not just one spike.
 
-The [trap-and-four-spikes example](examples/trap-and-four-spikes.user.js) binds **F** to place a Pit Trap toward the mouse, falling back to a Boost Pad if the trap item is unavailable. It binds **N** to place the best affordable spike variant up, right, down, and left. Multi-angle placement reselects the spike before each click and defaults to `intervalMs: 0`, with no intentional delay. If the game client still drops actions, try a small positive interval.
+The [trap-and-four-spikes example](examples/trap-and-four-spikes.user.js) binds **F** to place a Pit Trap toward the mouse, falling back to a Boost Pad if the trap item is unavailable. It binds **N** to place the best affordable spike variant up, right, down, and left. Multi-angle placement reselects the spike before each click and defaults to `intervalMs: 1`, with no intentional delay. If the game client still drops actions, try a small positive interval.
 
 See [examples/click-demo.user.js](examples/click-demo.user.js), [examples/spike-macro.user.js](examples/spike-macro.user.js), and [examples/trap-and-four-spikes.user.js](examples/trap-and-four-spikes.user.js) for complete userscripts.
 
