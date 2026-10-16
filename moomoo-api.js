@@ -426,6 +426,13 @@
                 throw new TypeError("[MooMooAPI] Repeat intervals must be non-negative finite numbers.");
             }
             const intervalMs = Math.max(settings.intervalMs, settings.minIntervalMs);
+
+            function isEditableRepeatTarget(target) {
+                if (!(target instanceof window.HTMLElement)) return false;
+                return target.isContentEditable ||
+                    ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+            }
+
             let held = false;
             let running = false;
             let timerId = null;
@@ -459,7 +466,7 @@
             function onKeyDown(event) {
                 if (event.code !== code || held || event.repeat) return;
                 if (settings.ignoreModifiers && (event.ctrlKey || event.altKey || event.metaKey)) return;
-                if (settings.ignoreInputs && isEditableTarget(event.target)) return;
+                if (settings.ignoreInputs && isEditableRepeatTarget(event.target)) return;
                 held = true;
                 lastEvent = event;
                 if (settings.preventDefault) event.preventDefault();
