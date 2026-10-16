@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.3.1
+ * MooMooAPI v0.4.0
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.3.1";
+    const VERSION = "0.4.0";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -933,11 +933,19 @@
             };
         }
 
-        // Select one build item and dispatch clicks at several angles without delays.
-        function placeItemAtAngles(itemId, angles, options) {
+        function waitBetweenPlacements(milliseconds) {
+            return new Promise(function (resolve) {
+                window.setTimeout(resolve, milliseconds);
+            });
+        }
+
+        // Select one build item, then dispatch each click in a separate browser task.
+        // The short gap lets the client process each mouse down/up pair independently.
+        async function placeItemAtAngles(itemId, angles, options) {
             const numericId = Number(itemId);
             const settings = Object.assign({
                 distance: 80,
+                intervalMs: 35,
                 restoreWeapon: true
             }, options || {});
 
@@ -947,6 +955,9 @@
             if (!Array.isArray(angles) || angles.length === 0 ||
                 !angles.every(isFiniteNumber)) {
                 return { success: false, reason: "invalid-angles", angles: angles };
+            }
+            if (!Number.isFinite(settings.intervalMs) || settings.intervalMs < 0) {
+                return { success: false, reason: "invalid-interval", intervalMs: settings.intervalMs };
             }
 
             const restoreId = getRestoreWeaponId(settings);
@@ -958,8 +969,11 @@
             const clicks = [];
             let restoreResult = null;
             try {
-                for (const angle of angles) {
-                    clicks.push(dispatchClick(settings, angle));
+                for (let index = 0; index < angles.length; index++) {
+                    if (index > 0 && settings.intervalMs > 0) {
+                        await waitBetweenPlacements(settings.intervalMs);
+                    }
+                    clicks.push(dispatchClick(settings, angles[index]));
                 }
             } finally {
                 restoreResult = restoreWeapon(restoreId);
@@ -972,10 +986,11 @@
                 itemId: numericId,
                 itemName: ITEM_NAMES[numericId],
                 angles: angles.slice(),
+                intervalMs: settings.intervalMs,
                 selection: selection,
                 clicks: clicks,
                 restoredWeaponId: restoreResult && restoreResult.success ? restoreId : null,
-                note: "All clicks are dispatched synchronously without intentional delays; the server may still reject a placement."
+                note: "Clicks are dispatched in separate browser tasks with a short configurable interval. The server may still reject an individual placement."
             };
         }
 
@@ -1108,12 +1123,13 @@
             return result;
         }
 
-        function placeCross(options) {
+        async function placeCross(options) {
             const settings = Object.assign({
                 checkResources: true,
                 unknownResources: "allow",
                 angles: [270, 0, 90, 180],
                 distance: 80,
+                intervalMs: 35,
                 restoreWeapon: true
             }, options || {});
 
@@ -1130,7 +1146,7 @@
             });
             if (!chosen.success) return chosen;
 
-            const result = api.build.placeItemAtAngles(
+            const result = await api.build.placeItemAtAngles(
                 chosen.item.id,
                 settings.angles,
                 settings
