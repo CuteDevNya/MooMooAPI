@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.2.3
+ * MooMooAPI v0.3.0
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
@@ -7,7 +7,7 @@
     "use strict";
 
     const API_NAME = "MooMooAPI";
-    const VERSION = "0.2.3";
+    const VERSION = "0.3.0";
 
     if (window[API_NAME] && window[API_NAME].__isMooMooAPI) {
         console.warn("[MooMooAPI] The library is already loaded.");
@@ -239,6 +239,35 @@
          *
          * Defaults to 80 pixels above the center, matching the supplied script.
          */
+        function getMouseDirection(origin) {
+            const resolvedOrigin = resolveOrigin(origin);
+            const dx = pointerState.x - resolvedOrigin.x;
+            const dy = pointerState.y - resolvedOrigin.y;
+
+            // If the pointer is exactly at the origin, use upward as a stable fallback.
+            if (Math.hypot(dx, dy) < 1) {
+                return {
+                    angle: 270,
+                    dx: 0,
+                    dy: 0,
+                    mouseX: pointerState.x,
+                    mouseY: pointerState.y,
+                    originX: resolvedOrigin.x,
+                    originY: resolvedOrigin.y
+                };
+            }
+
+            return {
+                angle: (Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360,
+                dx: dx,
+                dy: dy,
+                mouseX: pointerState.x,
+                mouseY: pointerState.y,
+                originX: resolvedOrigin.x,
+                originY: resolvedOrigin.y
+            };
+        }
+
         function click(configuration, distance, extraOptions) {
             let settings;
 
@@ -256,13 +285,19 @@
             }
 
             const origin = resolveOrigin(settings.origin);
-            const angle = isFiniteNumber(settings.angle) ? settings.angle : 270;
+            // With no explicit angle, aim toward the current real mouse pointer.
+            const mouseDirection = getMouseDirection(settings.origin);
+            const angle = isFiniteNumber(settings.angle) ? settings.angle : mouseDirection.angle;
             const radius = isFiniteNumber(settings.distance) ? settings.distance : 80;
             const radians = angle * Math.PI / 180;
             const x = origin.x + Math.cos(radians) * radius;
             const y = origin.y + Math.sin(radians) * radius;
 
-            return clickAt(x, y, settings);
+            const result = clickAt(x, y, settings);
+            result.angle = angle;
+            result.distance = radius;
+            result.directionSource = isFiniteNumber(settings.angle) ? "explicit-angle" : "mouse";
+            return result;
         }
 
         function clickAtAngle(angle, distance, options) {
@@ -355,6 +390,7 @@
             clickCenter: clickCenter,
             setDefaultTarget: setDefaultTarget,
             getMousePosition: getMousePosition,
+            getMouseDirection: getMouseDirection,
             bindClickHotkey: bindClickHotkey
         };
     });
@@ -792,10 +828,48 @@
     // --------------------------------------------------
 
     const buildModule = api.registerModule("build", function () {
+        function getRestoreWeaponId(settings) {
+            return Number.isInteger(settings.restoreItemId)
+                ? settings.restoreItemId
+                : (settings.restoreWeapon ? api.actions.getLastWeaponId() : null);
+        }
+
+        function restoreWeapon(restoreId) {
+            if (restoreId !== null &&
+                Number.isInteger(restoreId) &&
+                restoreId >= 0 &&
+                restoreId < 16 &&
+                api.items.isAvailable(restoreId)) {
+                return api.actions.selectItem(restoreId);
+            }
+            return null;
+        }
+
+        function dispatchClick(settings, forcedAngle) {
+            if (isFiniteNumber(settings.x) && isFiniteNumber(settings.y) &&
+                !isFiniteNumber(forcedAngle)) {
+                return api.input.clickAt(settings.x, settings.y, settings);
+            }
+
+            const clickSettings = {
+                distance: isFiniteNumber(settings.distance) ? settings.distance : 80,
+                origin: settings.origin,
+                target: settings.target,
+                button: settings.button,
+                restoreMouse: settings.restoreMouse
+            };
+            if (isFiniteNumber(forcedAngle)) {
+                clickSettings.angle = forcedAngle;
+            } else if (isFiniteNumber(settings.angle)) {
+                clickSettings.angle = settings.angle;
+            }
+
+            return api.input.click(clickSettings);
+        }
+
         function placeItem(itemId, options) {
             const numericId = Number(itemId);
             const settings = Object.assign({
-                angle: 270,
                 distance: 80,
                 restoreWeapon: true
             }, options || {});
@@ -808,10 +882,7 @@
                 };
             }
 
-            const restoreId = Number.isInteger(settings.restoreItemId)
-                ? settings.restoreItemId
-                : (settings.restoreWeapon ? api.actions.getLastWeaponId() : null);
-
+            const restoreId = getRestoreWeaponId(settings);
             const selection = api.actions.selectItem(numericId, settings);
             if (!selection.success) {
                 return {
@@ -821,29 +892,12 @@
                 };
             }
 
-            let clickResult;
+            let clickResult = null;
+            let restoreResult = null;
             try {
-                if (isFiniteNumber(settings.x) && isFiniteNumber(settings.y)) {
-                    clickResult = api.input.clickAt(settings.x, settings.y, settings);
-                } else {
-                    clickResult = api.input.click({
-                        angle: isFiniteNumber(settings.angle) ? settings.angle : 270,
-                        distance: isFiniteNumber(settings.distance) ? settings.distance : 80,
-                        origin: settings.origin,
-                        target: settings.target,
-                        button: settings.button,
-                        restoreMouse: settings.restoreMouse
-                    });
-                }
+                clickResult = dispatchClick(settings);
             } finally {
-                if (restoreId !== null &&
-                    Number.isInteger(restoreId) &&
-                    restoreId >= 0 &&
-                    restoreId < 16 &&
-                    api.items.isAvailable(restoreId)) {
-                    const restoreResult = api.actions.selectItem(restoreId);
-                    settings._restoreResult = restoreResult;
-                }
+                restoreResult = restoreWeapon(restoreId);
             }
 
             return {
@@ -851,17 +905,63 @@
                 itemId: numericId,
                 itemName: ITEM_NAMES[numericId],
                 selection: selection,
-                click: clickResult || null,
-                restoredWeaponId: settings._restoreResult && settings._restoreResult.success
-                    ? restoreId
-                    : null,
+                click: clickResult,
+                restoredWeaponId: restoreResult && restoreResult.success ? restoreId : null,
                 note: "A successful click result means mouse events were dispatched; it does not guarantee server acceptance."
+            };
+        }
+
+        // Select one build item and dispatch clicks at several angles without delays.
+        function placeItemAtAngles(itemId, angles, options) {
+            const numericId = Number(itemId);
+            const settings = Object.assign({
+                distance: 80,
+                restoreWeapon: true
+            }, options || {});
+
+            if (!isValidItemId(numericId) || numericId < 16) {
+                return { success: false, reason: "not-a-build-item", itemId: numericId };
+            }
+            if (!Array.isArray(angles) || angles.length === 0 ||
+                !angles.every(isFiniteNumber)) {
+                return { success: false, reason: "invalid-angles", angles: angles };
+            }
+
+            const restoreId = getRestoreWeaponId(settings);
+            const selection = api.actions.selectItem(numericId, settings);
+            if (!selection.success) {
+                return { success: false, reason: "item-selection-failed", selection: selection };
+            }
+
+            const clicks = [];
+            let restoreResult = null;
+            try {
+                for (const angle of angles) {
+                    clicks.push(dispatchClick(settings, angle));
+                }
+            } finally {
+                restoreResult = restoreWeapon(restoreId);
+            }
+
+            return {
+                success: clicks.length === angles.length && clicks.every(function (result) {
+                    return result && result.success;
+                }),
+                itemId: numericId,
+                itemName: ITEM_NAMES[numericId],
+                angles: angles.slice(),
+                selection: selection,
+                clicks: clicks,
+                restoredWeaponId: restoreResult && restoreResult.success ? restoreId : null,
+                note: "All clicks are dispatched synchronously without intentional delays; the server may still reject a placement."
             };
         }
 
         return {
             placeItem: placeItem,
-            place: placeItem
+            place: placeItem,
+            placeItemAtAngles: placeItemAtAngles,
+            placeAtAngles: placeItemAtAngles
         };
     });
 
@@ -985,6 +1085,31 @@
             return result;
         }
 
+        function placeCross(options) {
+            const settings = Object.assign({
+                checkResources: true,
+                unknownResources: "allow",
+                angles: [270, 0, 90, 180],
+                distance: 80,
+                restoreWeapon: true
+            }, options || {});
+
+            const chosen = getBestAvailable({
+                checkResources: settings.checkResources,
+                unknownResources: settings.unknownResources
+            });
+            if (!chosen.success) return chosen;
+
+            const result = api.build.placeItemAtAngles(
+                chosen.item.id,
+                settings.angles,
+                settings
+            );
+            result.resourceCheck = chosen.resourceCheck;
+            if (chosen.warning) result.warning = chosen.warning;
+            return result;
+        }
+
         function bindHotkey(code, options, hotkeyOptions) {
             if (typeof code !== "string" || !code) {
                 throw new TypeError("[MooMooAPI] bindHotkey requires a KeyboardEvent.code string.");
@@ -1033,6 +1158,7 @@
             getAvailable: getAvailable,
             getBestAvailable: getBestAvailable,
             placeBest: placeBest,
+            placeCross: placeCross,
             bindHotkey: bindHotkey
         };
     });
