@@ -1,5 +1,5 @@
 /*!
- * MooMooAPI v0.1.0
+ * MooMooAPI v0.2.0
  * A modular, client-side helper library for MooMoo.io userscripts.
  * https://github.com/CuteDevNya/MooMooAPI
  */
