@@ -17,7 +17,7 @@ Thanks for helping improve MooMooAPI. This project is an early client-side found
 
 - `input`: synthetic pointer events and optional click shortcuts.
 - `items`: action-bar catalog and DOM visibility checks.
-- `resources`: resource count parsing and the currently known spike costs.
+- `resources`: reads food, wood, and stone from dedicated display elements, reads score separately, retains a legacy resource-display fallback, and exposes the currently known spike costs.
 - `actions`: game item selection, preferring `selectToBuild` when available.
 - `build`: item selection followed by mouse-directed, coordinate-based, or multi-angle clicks, with optional weapon restoration.
 - `spikes`: priority-based spike selection, a single placement helper, and four-way placement.
